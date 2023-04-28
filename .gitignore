@@ -1,0 +1,17 @@
+plot/figs/*
+!plot/figs/.gitkeep
+log/beyond/*
+!log/beyond/.gitkeep
+log/SDGC/*
+!log/SDGC/.gitkeep
+.vscode/
+dataset/SDGC/*
+!dataset/SDGC/.gitkeep
+bin/beyond
+bin/SDGC
+bin/SDGC-debug
+bin/beyond-debug
+bin/debug.sh 
+scheduled_bm/*
+!scheduled_bm/.gitkeep
+bin/SNIG.json
