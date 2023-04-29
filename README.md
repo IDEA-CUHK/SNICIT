@@ -3,8 +3,20 @@
  
  # Reproducibility of Experiments
  ## Time Consumption
+It takes about 6 hours including human effort to run all the experiments. Most of the time is spent on experiments on SDGC benchmarks (Section 4.1): downloading SDGC dataset (≈ 2 hours, depending on network speed), SDGC benchmark parameter preprocessing (≈ 2 hours, depending on computing power), and dataset file I/O (adding up to approximately 1 hour for all the experiments). This is why we **strongly** recommend running experiments beyond SDGC (Section 4.2) at first. Experiments beyond SDGC benchmarks consume about 1 hour including human effort. We have already packed the input dataset (`MNIST` and `CIFAR-10`) and the medium-scale sparse DNN parameters inside the artifact. And due to their relatively small size, file I/O will not take much time.
+
  ## Storage Usage
+The artifact itself is not large (<150 MB). However, to run all the experiments, a total storage space of 185 GB is required. The SDGC dataset alone occupies 137.2 GB, and the temporary files generated from preprocessing SDGC dataset occupies 46.8 GB. Again, we strongly recommend running experiments beyond SDGC (Section 4.2) if you do not have adequate storage space to run experiments on SDGC benchmarks. The artifact (<150 MB) has everything you need to run experiments beyond SDGC.
+
  ## File Hierachy
+ (a) `3rd-party`: It contains all the third-party dependencies (`CLI`, `Eigen`, and `Taskflow`).
+ (b) `bin`: It contains the scripts for compiling the executables, automatically running the executables under different arguments, and automatically downloading SDGC dataset from the Internet. The compiled executables will also be placed in this folder
+ (c) `dataset`:  It contains the dataset for the experiments.
+ (d) `log`:  It contains output logs from the experiments.
+ (e) `main`: It contains the two main function entrances for experiments on and beyond SDGC benchmarks.
+ (f) `plot`: It contains a Python script for plotting heatmaps in **Figure 12**. The heatmaps generated from the script will be stored in this `plot/figs/`.
+ (g) `scheduled_bm`: It contains the temporary files generated from preprocessing SDGC benchmark parameters.
+ (h) `src`: It contains the source code for the experiments.
  ## Environment
  ## Experimental Workflow
  
