@@ -72,7 +72,28 @@ This script can automatically run the three methods on the four medium-scale spa
 This script can automatically conduct a grid search for all t in \[0, l) with a step size of 2 and all B in {1000, 2000, 2500, 5000, 10000} on DNNs A, B, C, and D by using `SNIG-2020` and `SNICIT`. Output logs can be found in `log/beyond/`. Then, please go to directory `plot/` and find a Python file plot_beyond.py. It can parse the output logs and extract `SNICIT`'s speed-up over `SNIG-2020` and accuracy loss to plot the heatmaps. The heatmaps can be found in folder `plot/figs/` (`Python`  environment and packages required).
 
 `∼/SNICIT/bin$ cd ../plot`
+
 `∼/SNICIT/plot$ python plot_beyond.py`
+
+(f) Now, we move on to the experiment on SDGC benchmarks. We switch back to folder `bin/` again, and run script `get_SDGC_dataset.sh` with `--all` to download the SDGC dataset.
+
+`∼/SNICIT/plot$ cd ../bin`
+
+`∼/SNICIT/bin$ ./get_SDGC_dataset.sh --all`
+
+(g) We run executable SDGC under `bin/`, which was generated from Step (b). You can run it by specifying the mode (`-m` `BF`, `SNIG`, `XY`, or `SNICIT`), network width (`-n` 1024, 4096, 16384, or 65536), network depth (`-l` 120, 480, or 1920), threshold (`-t` an integer in 0 ∼ l − 1), and batch size (`-b` an integer that is a factor of 60000). For example, if you want to run `SNICIT` on benchmark 1024-1920 with a threshold of 30 and a batch size of 60000, please use the following command.
+
+`∼/SNICIT/bin$ ./SDGC -m SNICIT -n 1024 -l 1920 -t 30 -b 60000`
+
+You can also run the command on DNNs 1024-120, 4096-120, 16384-120, and 65536-120 by using `SNICIT` to obtain the data for **Figure 7** from terminal output message (runtime of the four stages shown in **Figure 2**). When you run SDGC using `XY-2021` or `SNICIT` on a certain benchmark for the first time, it will take a long time to conduct network parameter preprocessing (adding up to approximately 2 hours for all the benchmarks). To save time, we save the preprocessed parameters in `scheduled_bm/`, so that we can avoid redundant preprocessing on the same benchmarks every time we run the program. Please also notice that when you run SDGC using `XY-2021` or `SNICIT` on benchmarks with 65536 neurons per layer, you may encounter a memory overflow error if your GPU has a small memory capacity. Please decrease the batch size to fit into GPU memory.
+
+(h) To obtain the data for **Table 3** and **Figure 6**, please run the script `SDGC_tab3_fig6.sh`. This script can automatically run the four methods on SDGC benchmarks. The output log file is `log/SDGC/tab3_fig5.txt`. It contains the runtime for every run and average post-convergence latency for `XY-2021` and `SNICIT` runs. However, we did not include `XY-2021` and `SNICIT` for benchmarks with 65536 neurons per layer, because we do not know the batch size that can fit your GPU memory. Please run SDGC with `XY-2021` and `SNICIT` on benchmarks with 65536 neurons manually with an appropriate batch size for your GPU.
+
+(i) To obtain data for **Figure 8** and **Figure 9**, please run the script `SDGC_fig89.sh`
+
+`∼/SNICIT/bin$ ./SDGC_fig89.sh`
+
+This script can automatically run SNICIT on DNNs 1024-120, 4096-120, and 16384-120 under different thresholds. It can also automatically run `XY-2021` and `SNICIT` on 1024-120, 4096-120, and 16384-120 under different batch sizes. The output log file is `log/SDGC/fig89.txt`, which contains the runtime for each run. However, we did not include `XY-2021` and `SNICIT` on DNN 65536-1920 (**Figure 9 (d)**), because we do not know the batch size that can fit your GPU memory. Please run `SDGC` with `XY-2021` and `SNICIT` on DNN 65536-1920 manually with appropriate batch sizes for your GPU to obtain the runtime data for **Figure 9 (d)**.
 
 
 
