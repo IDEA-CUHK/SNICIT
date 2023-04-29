@@ -10,13 +10,33 @@ The artifact itself is not large (<150 MB). However, to run all the experiments,
 
  ## File Hierachy
  (a) `3rd-party`: It contains all the third-party dependencies (`CLI`, `Eigen`, and `Taskflow`).
- (b) `bin`: It contains the scripts for compiling the executables, automatically running the executables under different arguments, and automatically downloading SDGC dataset from the Internet. The compiled executables will also be placed in this folder
- (c) `dataset`:  It contains the dataset for the experiments.
- (d) `log`:  It contains output logs from the experiments.
- (e) `main`: It contains the two main function entrances for experiments on and beyond SDGC benchmarks.
- (f) `plot`: It contains a Python script for plotting heatmaps in **Figure 12**. The heatmaps generated from the script will be stored in this `plot/figs/`.
- (g) `scheduled_bm`: It contains the temporary files generated from preprocessing SDGC benchmark parameters.
- (h) `src`: It contains the source code for the experiments.
- ## Environment
- ## Experimental Workflow
  
+ (b) `bin`: It contains the scripts for compiling the executables, automatically running the executables under different arguments, and automatically downloading SDGC dataset from the Internet. The compiled executables will also be placed in this folder.
+ 
+ (c) `dataset`:  It contains the dataset for the experiments.
+ 
+ (d) `log`:  It contains output logs from the experiments.
+ 
+ (e) `main`: It contains the two main function entrances for experiments on and beyond SDGC benchmarks.
+ 
+ (f) `plot`: It contains a Python script for plotting heatmaps in **Figure 12**. The heatmaps generated from the script will be stored in this `plot/figs/`.
+ 
+ (g) `scheduled_bm`: It contains the temporary files generated from preprocessing SDGC benchmark parameters.
+ 
+ (h) `src`: It contains the source code for the experiments.
+ 
+ ## Environment
+ (a) A CentOS 8 x86 64-bit machine, with 8 Intel i7-11700 CPU cores at 2.5 GHz, one RTX A6000 48 GB GPU, and 128 GB RAM.
+ 
+ (b) `g++` compiler version 8.5.0, with `-std=c++17`.
+ 
+ (c) `nvcc` version 12.0, with `-std=c++17`.
+ 
+ (d) `Python` version 3.9.13, `NumPy` version 1.23.4, `seaborn` version 0.12.2, and `Matplotlib` version 3.6.1 (Optional: for generating heatmaps in **Figure 12**).
+
+ ## Experimental Workflow
+ (a) To obtain the computational artifact, please log on to GitHub with the following account.
+ 
+ `**Username:** icppartifact@gmail.com`
+ `**Passcode:** ICPP23&Artifact`
+
