@@ -127,14 +127,14 @@ void SNICIT::infer(
         if (offset == 0) {
             std::filesystem::path filepath = std::string("../scheduled_bm/neuron"+std::to_string(_neuron)+"/");
             bool filepathExists = std::filesystem::is_directory(filepath);
-            if (filepathExists == false && _layer == 1920) {
-                for(int l = 0; l < _layer; ++l) {
+            if (filepathExists == false) {
+                for(int l = 0; l < 1920; ++l) {
                     std::filesystem::create_directory("../scheduled_bm/neuron"+std::to_string(_neuron)+"/");
                     std::string weight_file = _weight_path;
                     weight_file += "/n" + std::to_string(_neuron) + "-l"
                         + std::to_string(l + 1) + ".tsv";
                     COOMatrix coo(weight_file, 1, false);
-                    if (l%100 == 0)
+                    if (l % 100 == 0)
                         std::cout << "["<< weight_file << "] to COO success!" << std::endl;
                     coo.reorder(hash_reorder_t);
                     CSRCSCMatrix csr_csc(coo);
@@ -151,8 +151,6 @@ void SNICIT::infer(
                         schedule.schedule(128, 1);
                     }
                     auto data = schedule.get_data(_neuron);
-                    weight.push_back(data.value);
-                    row_access.push_back(data.row_access);
                     std::ofstream weight_output_file("../scheduled_bm/neuron"+std::to_string(_neuron)+"/n"+std::to_string(_neuron)+"-weight-l"+std::to_string(l)+".tsv");
                     for (const auto &e : data.value) weight_output_file << e << "\n";
 
@@ -160,30 +158,29 @@ void SNICIT::infer(
                     for (const auto &e : data.row_access) row_output_file << e << "\n";
                 }
             }
-            else {
-                for(int l = 0; l < _layer; ++l) {
-                    std::ifstream weight_input_file("../scheduled_bm/neuron"+std::to_string(_neuron)+"/n"+std::to_string(_neuron)+"-weight-l"+std::to_string(l)+".tsv");
-                    std::ifstream row_input_file("../scheduled_bm/neuron"+std::to_string(_neuron)+"/n"+std::to_string(_neuron)+"-row-l"+std::to_string(l)+".tsv");
-                    if(!weight_input_file || !row_input_file) {
-                        std::cout << "File:" << "n"+std::to_string(_neuron)+"-l"+std::to_string(l)+".tsv" << " does not exists.\n";
-                        exit(-1);
-                    }
-                    float val;
-                    int row_idx;
-                    std::vector<float> weight_layer; 
-                    std::vector<int> row_access_layer;
-                    while(weight_input_file >> val) {
-                        weight_layer.push_back(val);
-                    }
-                    while(row_input_file >> row_idx) {
-                        row_access_layer.push_back(row_idx);
-                    }
-                    weight.push_back(weight_layer);
-                    row_access.push_back(row_access_layer);
-                    if (l % 100 == 0)
-                        std::cout << "layer " + std::to_string(l) + " read succ" << std::endl;
+            for(int l = 0; l < _layer; ++l) {
+                std::ifstream weight_input_file("../scheduled_bm/neuron"+std::to_string(_neuron)+"/n"+std::to_string(_neuron)+"-weight-l"+std::to_string(l)+".tsv");
+                std::ifstream row_input_file("../scheduled_bm/neuron"+std::to_string(_neuron)+"/n"+std::to_string(_neuron)+"-row-l"+std::to_string(l)+".tsv");
+                if(!weight_input_file || !row_input_file) {
+                    std::cout << "File:" << "n"+std::to_string(_neuron)+"-l"+std::to_string(l)+".tsv" << " does not exists.\n";
+                    exit(-1);
                 }
+                float val;
+                int row_idx;
+                std::vector<float> weight_layer; 
+                std::vector<int> row_access_layer;
+                while(weight_input_file >> val) {
+                    weight_layer.push_back(val);
+                }
+                while(row_input_file >> row_idx) {
+                    row_access_layer.push_back(row_idx);
+                }
+                weight.push_back(weight_layer);
+                row_access.push_back(row_access_layer);
+                if (l % 100 == 0)
+                    std::cout << "layer " + std::to_string(l) + " read succ" << std::endl;
             }
+
         }
         GpuEnv env(0);
         std::cout << "==========[SNICIT]============ " << std::endl;
