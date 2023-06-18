@@ -1,3 +1,6 @@
+Sparse deep neural network (DNN) has become an important technique for reducing the inference cost of large DNNs. However, computing large sparse DNNs is very challenging because inference iterations can incur highly irregular patterns and unbalanced loads. To address this challenge, the recent HPEC Graph Challenge seeks novel high-performance inference methods for large sparse DNNs. Despite the rapid progress over the past four years, solutions have largely focused on static model compression or sparse multiplication kernels, while ignoring dynamic data compression at inference time which can achieve significant yet untapped performance benefits. Consequently, we propose `SNICIT`, a new GPU algorithm to accelerate large sparse DNN inference via compression at inference time. `SNICIT` leverages data clustering to transform intermediate results into a sparser representation that
+largely reduces computation over inference iterations. Evaluated on both HPEC Graph Challenge benchmarks and conventional DNNs (`MNIST`, `CIFAR-10`), SNICIT achieves 6 ∼ 444× and 1.36 ∼ 1.95× speed-ups over the previous champions, respectively.
+
 # Artifact Identification
 `SNICIT` achieves 6 ∼ 444× speed-ups on SDGC benchmarks and 1.36 ∼ 1.95× speed-ups on medium-scale sparse DNN applications (`MNIST` and `CIFAR-10`) over the previous years’ SDGC champions. Our computational artifact compares the performance of `SNICIT` and the previous years’ SDGC champions on 12 SDGC benchmarks and 4 medium-scale sparse DNNs targeting `MNIST` and `CIFAR-10`. It also demonstrates the decomposition of the runtime and the impact of threshold layer and batch size on performance. After compilation, our computational artifact generates two executable files, corresponding to experiments on SDGC benchmarks (Section 4.1) and beyond SDGC (Section 4.2) in the article, respectively. The artifact contains the dataset (input, medium-scale sparse DNNs) for experiments beyond SDGC benchmarks, and a script to download SDGC dataset (input, benchmark DNNs) from the official SDGC website. All the third-party dependencies are packed in the artifact. Our computational artifact can reproduce all the experiments mentioned in the paper. We will make it open-source to benefit both HPC and the machine learning community for accelerating sparse DNN inference.
  
@@ -99,6 +102,11 @@ You can also run the command on DNNs 1024-120, 4096-120, 16384-120, and 65536-12
 
 This script can automatically run SNICIT on DNNs 1024-120, 4096-120, and 16384-120 under different thresholds. It can also automatically run `XY-2021` and `SNICIT` on 1024-120, 4096-120, and 16384-120 under different batch sizes. The output log file is `log/SDGC/fig89.txt`, which contains the runtime for each run. However, we did not include `XY-2021` and `SNICIT` on DNN 65536-1920 (**Figure 9 (d)**), because we do not know the batch size that can fit your GPU memory. Please run `SDGC` with `XY-2021` and `SNICIT` on DNN 65536-1920 manually with appropriate batch sizes for your GPU to obtain the runtime data for **Figure 9 (d)**.
 
-
+# Reference
++ [A GPU Implementation of the Sparse Deep Neural Network Graph Challenge](https://doi.org/10.1109/HPEC.2019.8916223)
++ [A Novel Inference Algorithm for Large Sparse Neural Network using Task Graph Parallelism](https://ieeexplore.ieee.org/abstract/document/9286218)
++ [SNIG-2020 and BF-2019 implementation](https://github.com/dian-lun-lin/SNIG)
++ [Fast Sparse Deep Neural Network Inference with Flexible SpMM Optimization Space Exploration](https://ieeexplore.ieee.org/document/9622791)
++ [XY-2021 implementation](https://github.com/CGCL-codes/Graphchallenge21)
 
 
