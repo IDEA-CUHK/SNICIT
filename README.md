@@ -39,13 +39,7 @@ The artifact itself is not large (<150 MB). However, to run all the experiments,
  (d) `Python` version 3.9.13, `NumPy` version 1.23.4, `seaborn` version 0.12.2, and `Matplotlib` version 3.6.1 (Optional: for generating heatmaps in **Figure 12**).
 
  ## Experimental Workflow
- (a) To obtain the computational artifact, please log on to GitHub with the following account.
- 
- `Username: icppartifact@gmail.com`
- 
- `Passcode: ICPP23&Artifact`
- 
- GitHub may ask you to enter a confirmation code sent to the email linked to this account. The email (Gmail) account is the same as the GitHub account. There will be a private repository called `SNICIT` on GitHub, please download it.
+ (a) Please clone the repository.
  
  (b) Next, we jump into `SNICIT-main` folder. We suggest running experiments beyond SDGC benchmarks first. please go to directory `bin/` first and run the script `compile.sh`.
  
