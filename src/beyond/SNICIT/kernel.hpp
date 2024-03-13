@@ -100,7 +100,7 @@ __global__ void coarse_cluster(
 
 }
 
-__global__ void sparse_hidden_post(
+_global_ void sparse_hidden_post(
     const int *rowsY,
     const float* Y0,
     const int* roffW,
@@ -110,7 +110,7 @@ __global__ void sparse_hidden_post(
     float* Y1
 ) {
     // (8, 128)
-    extern  __shared__ float shRow[];
+    extern  _shared_ float shRow[];
     int tid = threadIdx.x + threadIdx.y*blockDim.x;
     int rid = rowsY[blockIdx.x];
     if (tid < K) {
@@ -123,6 +123,14 @@ __global__ void sparse_hidden_post(
         if(valY == 0) {
             continue;
         }
+    if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0) 
+    {
+      for (int i = 0; i < N; i++) 
+        {
+          printf("Y0[%d] = %f\n", i, Y0[i]);
+        }
+    }
+
 
         int begOffW = roffW[i] + threadIdx.x;
         int endOffW = roffW[i + 1];
@@ -135,6 +143,13 @@ __global__ void sparse_hidden_post(
     __syncthreads();
     if (tid < K) {
         Y1[rid * K+tid] = shRow[tid];
+    }
+    if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0) 
+    {
+      for (int i = 0; i < N; i++) 
+        {
+          printf("Y1[%d] = %f\n", i, Y0[i]);
+        }
     }
 }
 
