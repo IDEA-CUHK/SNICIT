@@ -1,21 +1,26 @@
-#include <SNICIT/kernel.hpp>
+#include <src/beyond/SNICIT/kernel.hpp>
 #include <cuda_error.hpp>
 #include <chrono>
 #include <general.hpp>
 #include <fstream>
 #include <string>
 
-namespace SNICIT_BEY{
+namespace SNICIT_BEY {
 
-class SNICIT{
-
-  private:
+class SNICIT {
+private:
     std::vector<float*> _dev_Y_hidden; // 2 buffers
     std::vector<int*> _dev_hidden_roffw; // hidden layer W row offset
     std::vector<int*> _dev_hidden_colsw; // hidden layer W cols
     std::vector<float*> _dev_hidden_valsw; // hidden layer W vals
     std::vector<float*> _dev_hidden_bias; // hidden layer W vals
 
+    std::vector<int*> _dev_hidden_delta_index; // New sparse matrix format variables
+    std::vector<float*> _dev_hidden_nonzero_values; // New sparse matrix format variables
+    std::vector<int*> _dev_hidden_minimum; // New sparse matrix format variables
+    std::vector<int*> _dev_hidden_row_offset; // New sparse matrix format variables
+    std::vector<int*> _dev_hidden_avg_nnz; // New sparse matrix format variables
+    std::vector<int*> _dev_hidden_slope; // New sparse matrix format variables
 
     float *Y_input; // on cpu
     float *_dev_Y_output_whole; // on gpu
@@ -27,8 +32,6 @@ class SNICIT{
     float* _dev_output_weight;
     float* _dev_output_bias;
     int* _dev_result_label;
-    
-
 
     std::string weight_path, bias_path;
     int num_hidden_neurons, num_layers;
@@ -46,33 +49,27 @@ class SNICIT{
     int *rowsY;
 
     void _infer();
-    
     void _preprocess(const std::string& input_path);
-        
     void _weight_bias_alloc_read();
-
     void _input_alloc_read(const std::string& input_path);
-
     void _result_alloc_read(const std::string& input_path);
 
-  public:
+public:
     SNICIT(
-      const std::string& _weight_path,
-      const std::string& _bias_path,
-      const int _num_hidden_neurons,
-      const int _num_layers,
-      const float _density,
-      const int _seed_size,
-      const int _threshold,
-      const int _batch_size,
-      const int _num_input,
-      const bool _is_cifar
+        const std::string& _weight_path,
+        const std::string& _bias_path,
+        const int _num_hidden_neurons,
+        const int _num_layers,
+        const float _density,
+        const int _seed_size,
+        const int _threshold,
+        const int _batch_size,
+        const int _num_input,
+        const bool _is_cifar
     );
 
     ~SNICIT();
-    
     void infer(const std::string& input_path);
-
 };
 
 SNICIT::SNICIT(
@@ -86,89 +83,112 @@ SNICIT::SNICIT(
     const int _batch_size,
     const int _num_input,
     const bool _is_cifar
-) : weight_path(_weight_path), bias_path(_bias_path), 
-    num_hidden_neurons(_num_hidden_neurons), num_layers(_num_layers), 
-    num_classes(10), density(_density), 
-    nnz(std::round(_num_hidden_neurons*_num_hidden_neurons*_density)), num_input(_num_input), batch_size(_batch_size),
+) : weight_path(_weight_path), bias_path(_bias_path),
+    num_hidden_neurons(_num_hidden_neurons), num_layers(_num_layers),
+    num_classes(10), density(_density),
+    nnz(std::round(_num_hidden_neurons * _num_hidden_neurons * _density)), num_input(_num_input), batch_size(_batch_size),
     seed_size(_seed_size), threshold(_threshold), is_cifar(_is_cifar)
- {
-  std::cout<<"Constructing SNICIT method......\n";
-  input_size = is_cifar ? _num_hidden_neurons : 784;
+{
+    std::cout << "Constructing SNICIT method......\n";
+    input_size = is_cifar ? _num_hidden_neurons : 784;
+
+    // Allocate memory for new sparse matrix format variables
+    _dev_hidden_delta_index.reserve(num_layers);
+    _dev_hidden_nonzero_values.reserve(num_layers);
+    _dev_hidden_minimum.reserve(num_layers);
+    _dev_hidden_row_offset.reserve(num_layers);
+    _dev_hidden_avg_nnz.reserve(num_layers);
+    _dev_hidden_slope.reserve(num_layers);
 }
 
 SNICIT::~SNICIT() {
-  for(auto& each_Y : _dev_Y_hidden) {
-    checkCuda(cudaFree(each_Y));
-  }
-  for(auto& each_dev_hidden_roffw : _dev_hidden_roffw) {
-    checkCuda(cudaFree(each_dev_hidden_roffw));
-  }
-  for(auto& each_dev_hidden_colsw : _dev_hidden_colsw) {
-    checkCuda(cudaFree(each_dev_hidden_colsw));
-  }
-  for(auto& each_dev_hidden_valsw : _dev_hidden_valsw) {
-    checkCuda(cudaFree(each_dev_hidden_valsw));
-  }
-  for(auto& each_dev_hidden_bias : _dev_hidden_bias) {
-    checkCuda(cudaFree(each_dev_hidden_bias));
-  }
-  if (!is_cifar) {
-    checkCuda(cudaFree(_dev_Y_input));
-    checkCuda(cudaFree(_dev_input_weight));
-    checkCuda(cudaFree(_dev_input_bias));
-  }
-  checkCuda(cudaFree(_dev_output_weight));
-  checkCuda(cudaFree(_dev_output_bias));
-  
-  checkCuda(cudaFree(_dev_Y_output));
-  checkCuda(cudaFree(_dev_Y_output_whole));
-  checkCuda(cudaFree(_dev_result_label));
-  checkCuda(cudaFree(y_star_row));
-  checkCuda(cudaFree(centroid_LUT));
-  checkCuda(cudaFree(ne_record));
-  checkCuda(cudaFree(rowsY));
+    for (auto& each_Y : _dev_Y_hidden) {
+        checkCuda(cudaFree(each_Y));
+    }
+    for (auto& each_dev_hidden_roffw : _dev_hidden_roffw) {
+        checkCuda(cudaFree(each_dev_hidden_roffw));
+    }
+    for (auto& each_dev_hidden_colsw : _dev_hidden_colsw) {
+        checkCuda(cudaFree(each_dev_hidden_colsw));
+    }
+    for (auto& each_dev_hidden_valsw : _dev_hidden_valsw) {
+        checkCuda(cudaFree(each_dev_hidden_valsw));
+    }
+    for (auto& each_dev_hidden_bias : _dev_hidden_bias) {
+        checkCuda(cudaFree(each_dev_hidden_bias));
+    }
+    for (auto& each_dev_hidden_delta_index : _dev_hidden_delta_index) {
+        checkCuda(cudaFree(each_dev_hidden_delta_index));
+    }
+    for (auto& each_dev_hidden_nonzero_values : _dev_hidden_nonzero_values) {
+        checkCuda(cudaFree(each_dev_hidden_nonzero_values));
+    }
+    for (auto& each_dev_hidden_minimum : _dev_hidden_minimum) {
+        checkCuda(cudaFree(each_dev_hidden_minimum));
+    }
+    for (auto& each_dev_hidden_row_offset : _dev_hidden_row_offset) {
+        checkCuda(cudaFree(each_dev_hidden_row_offset));
+    }
+    for (auto& each_dev_hidden_avg_nnz : _dev_hidden_avg_nnz) {
+        checkCuda(cudaFree(each_dev_hidden_avg_nnz));
+    }
+    for (auto& each_dev_hidden_slope : _dev_hidden_slope) {
+        checkCuda(cudaFree(each_dev_hidden_slope));
+    }
+    if (!is_cifar) {
+        checkCuda(cudaFree(_dev_Y_input));
+        checkCuda(cudaFree(_dev_input_weight));
+        checkCuda(cudaFree(_dev_input_bias));
+    }
+    checkCuda(cudaFree(_dev_output_weight));
+    checkCuda(cudaFree(_dev_output_bias));
+    checkCuda(cudaFree(_dev_Y_output));
+    checkCuda(cudaFree(_dev_Y_output_whole));
+    checkCuda(cudaFree(_dev_result_label));
+    checkCuda(cudaFree(y_star_row));
+    checkCuda(cudaFree(centroid_LUT));
+    checkCuda(cudaFree(ne_record));
+    checkCuda(cudaFree(rowsY));
 
-  delete [] Y_input;
+    delete[] Y_input;
 }
 
 void SNICIT::infer(const std::string& input_path) {
-  _preprocess(input_path);
-
-  _infer();
-
+    _preprocess(input_path);
+    _infer();
 }
 
 void SNICIT::_preprocess(const std::string& input_path) {
-  std::cout<<"preprocessing......\n";
-  auto _tic = std::chrono::steady_clock::now();
+    std::cout << "preprocessing......\n";
+    auto _tic = std::chrono::steady_clock::now();
 
-  _weight_bias_alloc_read();
+    _weight_bias_alloc_read();
 
-  _input_alloc_read(input_path);
+    _input_alloc_read(input_path);
 
-  _result_alloc_read(input_path);
+    _result_alloc_read(input_path);
 
-  checkCuda(cudaMallocManaged(
-    &y_star_row,
-    seed_size * sizeof(int)
-  ));
+    checkCuda(cudaMallocManaged(
+        &y_star_row,
+        seed_size * sizeof(int)
+    ));
 
-  checkCuda(cudaMallocManaged(
-    &centroid_LUT,
-    batch_size * sizeof(int)
-  ));
-  checkCuda(cudaMallocManaged(
-    &ne_record,
-    batch_size * sizeof(bool)
-  ));
-  checkCuda(cudaMallocManaged(
-    &rowsY,
-    batch_size * sizeof(int)
-  ));
+    checkCuda(cudaMallocManaged(
+        &centroid_LUT,
+        batch_size * sizeof(int)
+    ));
+    checkCuda(cudaMallocManaged(
+        &ne_record,
+        batch_size * sizeof(bool)
+    ));
+    checkCuda(cudaMallocManaged(
+        &rowsY,
+        batch_size * sizeof(int)
+    ));
 
-  auto _toc = std::chrono::steady_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(_toc - _tic).count();
-  std::cout<<"finished preprocessing in "<<duration<< "ms"<<std::endl;
+    auto _toc = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(_toc - _tic).count();
+    std::cout << "finished preprocessing in " << duration << "ms" << std::endl;
 }
 
 
@@ -225,7 +245,10 @@ void SNICIT::_weight_bias_alloc_read() {
     delete [] input_weight;
     delete [] input_bias;
   }
-  else {file_offset = 1;}
+  else {
+    file_offset = 1;
+  }
+  //..........im here
   for(int hidden_layer = 0; hidden_layer < num_layers; hidden_layer++) {
     int *hidden_roffw;
     int *hidden_colsw;
@@ -258,7 +281,7 @@ void SNICIT::_weight_bias_alloc_read() {
 
     // read hidden layer
     
-    MyReadFile = std::ifstream(weight_path+"l"+std::to_string(hidden_layer+file_offset)+"-sparse.tsv");
+    MyReadFile = std::ifstream(weight_path+"l"+std::to_string(hidden_layer+file_offset)+"_sparse.tsv");
     if (MyReadFile.is_open()) {
       ptr = 0;
 
@@ -284,7 +307,7 @@ void SNICIT::_weight_bias_alloc_read() {
     }
     else {
       std::cout << "ERROR: open weight file " << weight_path+"l"+
-        std::to_string(hidden_layer+file_offset)+"-sparse.tsv"<<std::endl;
+        std::to_string(hidden_layer+file_offset)+"_sparse.tsv"<<std::endl;
       exit(1);
     }
     MyReadFile.close();
