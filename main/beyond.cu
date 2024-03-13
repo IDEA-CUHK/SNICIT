@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
   app.add_option(
     "-k, --benchmark", 
     benchmark, 
-    "A, B, C, D"
+    "A"
   );
   
   std::string weight_path;
@@ -63,36 +63,6 @@ int main(int argc, char* argv[]) {
     density = 0.6;
     is_cifar = false;
     if (layer_threshold == -1) layer_threshold = 8;
-  }
-  else if (benchmark == "B") {
-    weight_path = "../dataset/beyond/networks/tsv_weights/n256-l18-acc96.88/";
-    bias_path = "../dataset/beyond/networks/tsv_biases/n256-l18-acc96.88/";
-    input_path = "../dataset/beyond/MNIST/";
-    num_hidden_neurons = 256;
-    num_layers = 18;
-    density = 0.6;
-    is_cifar = false;
-    if (layer_threshold == -1) layer_threshold = 8;
-  }
-  else if (benchmark == "C") {
-    weight_path = "../dataset/beyond/networks/tsv_weights/n256-l12-acc95.61/";
-    bias_path = "../dataset/beyond/networks/tsv_biases/n256-l12-acc95.61/";
-    input_path = "../dataset/beyond/MNIST/";
-    num_hidden_neurons = 256;
-    num_layers = 12;
-    density = 0.5;
-    is_cifar = false;
-    if (layer_threshold == -1) layer_threshold = 6;
-  }
-  else if (benchmark == "D") {
-    weight_path = "../dataset/beyond/networks/tsv_weights/n256-l12-acc75.86/";
-    bias_path = "../dataset/beyond/networks/tsv_biases/n256-l12-acc75.86/";
-    input_path = "../dataset/beyond/CIFAR-10/";
-    num_hidden_neurons = 256;
-    num_layers = 12;
-    density = 0.5;
-    is_cifar = true;
-    if (layer_threshold == -1) layer_threshold = 6;
   }
   else {
     using namespace std::literals::string_literals;
