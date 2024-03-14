@@ -221,7 +221,7 @@ void SNICIT::_weight_bias_alloc_read() {
       }
     }
     else {
-      std::cout << "ERROR: open weight file " << weight_path+"l1-dense.tsv"<<std::endl;
+      std::cout << "ERROR: open weight file " << weight_path+"l1_dense.tsv"<<std::endl;
       exit(1);
     }
     MyReadFile.close();
@@ -233,7 +233,7 @@ void SNICIT::_weight_bias_alloc_read() {
       }
     }
     else {
-      std::cout << "ERROR: open bias file " << weight_path+"l1-dense.tsv"<<std::endl;
+      std::cout << "ERROR: open bias file " << weight_path+"l1_dense.tsv"<<std::endl;
       exit(1);
     }
     MyReadFile.close();
@@ -303,7 +303,7 @@ void SNICIT::_weight_bias_alloc_read() {
 
     checkCuda(cudaMallocManaged(&dev_cur_bias, num_hidden_neurons * sizeof(float)));
 
-    MyReadFile = std::ifstream(bias_path+"l"+std::to_string(hidden_layer+file_offset)+"-sparse.tsv");
+    MyReadFile = std::ifstream(bias_path+"l"+std::to_string(hidden_layer+file_offset)+"_sparse.tsv");
     if (MyReadFile.is_open()) {
       ptr = 0;
       while(std::getline(MyReadFile, line)){
@@ -312,7 +312,7 @@ void SNICIT::_weight_bias_alloc_read() {
     }
     else {
       std::cout << "ERROR: open bias file " << bias_path+"l"+
-        std::to_string(hidden_layer+file_offset)+"-sparse.tsv"<<std::endl;
+        std::to_string(hidden_layer+file_offset)+"_sparse.tsv"<<std::endl;
       exit(1);
     }
     MyReadFile.close();
