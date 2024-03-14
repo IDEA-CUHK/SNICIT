@@ -245,64 +245,46 @@ void SNICIT::_weight_bias_alloc_read() {
     delete [] input_weight;
     delete [] input_bias;
   }
-  else {
-    file_offset = 1;
-  }
-  //..........im here
+  else {file_offset = 1;}
   for(int hidden_layer = 0; hidden_layer < num_layers; hidden_layer++) {
-    int *hidden_roffw;
-    int *hidden_colsw;
-    float *hidden_valsw;
+    int* dev_cur_delta_index;
+    float* dev_cur_nonzero_values;
+    int* dev_cur_minimum;
+    int* dev_cur_row_offset;
+    int* dev_cur_avg_nnz;
+    int* dev_cur_slope;
     float *hidden_bias;
 
-    hidden_roffw = new int[num_hidden_neurons+1];
-    hidden_colsw = new int[nnz];
-    hidden_valsw = new float[nnz];
     hidden_bias = new float[num_hidden_neurons];
-    memset(hidden_roffw, 0, (num_hidden_neurons+1)*sizeof(int));
-    int* dev_cur_roffw;
-    int* dev_cur_colsw;
-    float* dev_cur_valsw;
-    float* dev_cur_bias;
 
-    // allocate hidden layer's weight and bias
-    checkCuda(cudaMallocManaged(
-      &dev_cur_roffw,
-      (num_hidden_neurons+1) * sizeof(float)
-    ));
-    checkCuda(cudaMallocManaged(
-      &dev_cur_colsw,
-      nnz * sizeof(float)
-    ));
-    checkCuda(cudaMallocManaged(
-      &dev_cur_valsw,
-      nnz * sizeof(float)
-    ));
+    // Allocate memory for new sparse matrix format variables
+    checkCuda(cudaMallocManaged(&dev_cur_delta_index, nnz * sizeof(int)));
+    checkCuda(cudaMallocManaged(&dev_cur_nonzero_values, nnz * sizeof(float)));
+    checkCuda(cudaMallocManaged(&dev_cur_minimum, num_hidden_neurons * sizeof(int)));
+    checkCuda(cudaMallocManaged(&dev_cur_row_offset, num_hidden_neurons * sizeof(int)));
+    checkCuda(cudaMallocManaged(&dev_cur_avg_nnz, num_hidden_neurons * sizeof(int)));
+    checkCuda(cudaMallocManaged(&dev_cur_slope, num_hidden_neurons * sizeof(int)));
 
-    // read hidden layer
-    
+    // Read the new sparse matrix format from file and copy to GPU
     MyReadFile = std::ifstream(weight_path+"l"+std::to_string(hidden_layer+file_offset)+"_sparse.tsv");
     if (MyReadFile.is_open()) {
       ptr = 0;
-
       std::vector<std::string> tokens;
       while(std::getline(MyReadFile, line)){
-
         std::stringstream lineStream(line);
         std::string token;
         tokens.clear();
-        while(std::getline(lineStream, token, '\t')) {
+        while(std::getline(lineStream, token, ' ')) {
           tokens.push_back(std::move(token));
         }
 
-        hidden_roffw[std::stoi(tokens[0])+1]++;
-        hidden_colsw[ptr] = std::stoi(tokens[1]);
-        hidden_valsw[ptr] = std::stof(tokens[2]);
+        dev_cur_nonzero_values[ptr] = std::stof(tokens[0]);
+        dev_cur_row_offset[ptr] = std::stoi(tokens[1]);
+        dev_cur_minimum[ptr] = std::stoi(tokens[2]);
+        dev_cur_delta_index[ptr] = std::stoi(tokens[3]);
+        dev_cur_avg_nnz[ptr] = std::stoi(tokens[4]);
+        dev_cur_slope[ptr] = std::stoi(tokens[5]);
         ptr++;
-      }
-      for (int i = 0; i < num_hidden_neurons; i++)
-      {
-          hidden_roffw[i + 1] += hidden_roffw[i];
       }
     }
     else {
@@ -311,22 +293,15 @@ void SNICIT::_weight_bias_alloc_read() {
       exit(1);
     }
     MyReadFile.close();
-    // copy hidden layer
-    checkCuda(cudaMemcpy(dev_cur_roffw, hidden_roffw, 
-      (num_hidden_neurons+1) * sizeof(int), cudaMemcpyHostToDevice));
-    checkCuda(cudaMemcpy(dev_cur_colsw, hidden_colsw, 
-      nnz * sizeof(int), cudaMemcpyHostToDevice));
-    checkCuda(cudaMemcpy(dev_cur_valsw, hidden_valsw, 
-      nnz * sizeof(float), cudaMemcpyHostToDevice));
-    _dev_hidden_roffw.emplace_back(dev_cur_roffw);
-    _dev_hidden_colsw.emplace_back(dev_cur_colsw);
-    _dev_hidden_valsw.emplace_back(dev_cur_valsw);
 
-    checkCuda(cudaMallocManaged(
-      &dev_cur_bias,
-      num_hidden_neurons * sizeof(float)
-    ));
+    _dev_hidden_delta_index.emplace_back(dev_cur_delta_index);
+    _dev_hidden_nonzero_values.emplace_back(dev_cur_nonzero_values);
+    _dev_hidden_minimum.emplace_back(dev_cur_minimum);
+    _dev_hidden_row_offset.emplace_back(dev_cur_row_offset);
+    _dev_hidden_avg_nnz.emplace_back(dev_cur_avg_nnz);
+    _dev_hidden_slope.emplace_back(dev_cur_slope);
 
+    checkCuda(cudaMallocManaged(&dev_cur_bias, num_hidden_neurons * sizeof(float)));
 
     MyReadFile = std::ifstream(bias_path+"l"+std::to_string(hidden_layer+file_offset)+"-sparse.tsv");
     if (MyReadFile.is_open()) {
@@ -347,9 +322,6 @@ void SNICIT::_weight_bias_alloc_read() {
 
     _dev_hidden_bias.emplace_back(dev_cur_bias);
 
-    delete [] hidden_roffw;
-    delete [] hidden_colsw;
-    delete [] hidden_valsw;
     delete [] hidden_bias;
   }
 
@@ -389,31 +361,28 @@ void SNICIT::_weight_bias_alloc_read() {
 
 void SNICIT::_input_alloc_read(const std::string& input_path) {
   
-  Y_input = new float[num_input*input_size];
+  Y_input = new float[num_input * input_size];
   if (!is_cifar) {
-    std::ifstream file(input_path+"t10k-images-idx3-ubyte", std::ios::binary);
-    if (file.is_open())
-    {
-      int magic_number=0;
-      int number_of_images=0;
-      int n_rows=0;
-      int n_cols=0;
-      file.read((char*)&magic_number,sizeof(magic_number));
-      file.read((char*)&number_of_images,sizeof(number_of_images));
-      file.read((char*)&n_rows,sizeof(n_rows));
-      file.read((char*)&n_cols,sizeof(n_cols));
-      for(int i=0;i<10000;++i) // !!!!!!!!!!!!!!!!!! change!!!!!!!!!!!!!
-      {
-        for(int r=0;r<input_size;++r)
-        {
-          unsigned char temp=0;
-          file.read((char*)&temp,sizeof(temp));
-          Y_input[i*input_size+r]= ((float)temp)/255.0;
+    std::ifstream file(input_path + "t10k-images-idx3-ubyte", std::ios::binary);
+    if (file.is_open()) {
+      int magic_number = 0;
+      int number_of_images = 0;
+      int n_rows = 0;
+      int n_cols = 0;
+      file.read((char*)&magic_number, sizeof(magic_number));
+      file.read((char*)&number_of_images, sizeof(number_of_images));
+      file.read((char*)&n_rows, sizeof(n_rows));
+      file.read((char*)&n_cols, sizeof(n_cols));
+      for (int i = 0; i < 10000; ++i) { // Change this loop if necessary
+        for (int r = 0; r < input_size; ++r) {
+          unsigned char temp = 0;
+          file.read((char*)&temp, sizeof(temp));
+          Y_input[i * input_size + r] = ((float)temp) / 255.0;
         }
       }
       checkCuda(cudaMallocManaged(
         &_dev_Y_input,
-        batch_size*input_size * sizeof(float)
+        batch_size * input_size * sizeof(float)
       ));
     }
     else {
@@ -423,11 +392,11 @@ void SNICIT::_input_alloc_read(const std::string& input_path) {
     file.close();
   }
   else {
-    std::ifstream file(input_path+"cifar-input.txt");
+    std::ifstream file(input_path + "cifar-input.txt");
     if (file.is_open()) {
       std::string line;
       int ptr = 0;
-      while(std::getline(file, line)){
+      while (std::getline(file, line)) {
         Y_input[ptr++] = std::stof(line);
       }
     }
@@ -438,24 +407,27 @@ void SNICIT::_input_alloc_read(const std::string& input_path) {
     file.close();
   }
 
-  for(int buff=0; buff<2; buff++) {
-    float *_dev_buff_Y;
+  for (int buff = 0; buff < 2; buff++) {
+    float* _dev_buff_Y;
     checkCuda(cudaMallocManaged(
       &_dev_buff_Y,
-      batch_size*num_hidden_neurons * sizeof(float)
+      batch_size * num_hidden_neurons * sizeof(float)
     ));
     _dev_Y_hidden.emplace_back(_dev_buff_Y);
   }
+
   checkCuda(cudaMallocManaged(
     &_dev_Y_output_whole,
-    num_input*num_classes * sizeof(float)
+    num_input * num_classes * sizeof(float)
   ));
 
   checkCuda(cudaMallocManaged(
     &_dev_Y_output,
-    batch_size*num_classes * sizeof(float)
+    batch_size * num_classes * sizeof(float)
   ));
 }
+
+//i am here.
 
 void SNICIT::_result_alloc_read(const std::string& input_path) {
   int *label;
