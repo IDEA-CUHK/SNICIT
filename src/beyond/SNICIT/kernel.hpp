@@ -11,7 +11,7 @@ __global__ void y_star_gen(
 ) {
     int row_idx = threadIdx.y * num_input / blockDim.y;
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
-    extern  __shared__ float shRow[]; // combined diff_arr and tmp_star_row here
+    __shared__ float shRow[neurons + seed_size + blockDim.y]; // combined diff_arr and tmp_star_row here
     if (threadIdx.x == 0) {
         shRow[neurons+seed_size+threadIdx.y] = (float)row_idx;
     }
@@ -57,8 +57,7 @@ __global__ void coarse_cluster(
         ne_record[blockIdx.x] = true;
         return;
     }
-    extern  __shared__ float thisRow[];
-    // __shared__ float diff_arr[60]; // estimated max y* num
+    __shared__ float thisRow[neurons + y_star_cnt]; // estimated max y* num
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
     if (tid < neurons) {
         thisRow[tid] = Y0[blockIdx.x*neurons+tid];
@@ -100,7 +99,7 @@ __global__ void coarse_cluster(
 
 }
 
-_global_ void sparse_hidden_post(
+__global__ void sparse_hidden_post(
     const int *rowsY,
     const float* Y0,
     const int* roffW,
@@ -110,7 +109,7 @@ _global_ void sparse_hidden_post(
     float* Y1
 ) {
     // (8, 128)
-    extern  _shared_ float shRow[];
+    __shared__ float shRow[K];
     int tid = threadIdx.x + threadIdx.y*blockDim.x;
     int rid = rowsY[blockIdx.x];
     if (tid < K) {
@@ -123,14 +122,6 @@ _global_ void sparse_hidden_post(
         if(valY == 0) {
             continue;
         }
-    if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0) 
-    {
-      for (int i = 0; i < N; i++) 
-        {
-          printf("Y0[%d] = %f\n", i, Y0[i]);
-        }
-    }
-
 
         int begOffW = roffW[i] + threadIdx.x;
         int endOffW = roffW[i + 1];
@@ -143,13 +134,6 @@ _global_ void sparse_hidden_post(
     __syncthreads();
     if (tid < K) {
         Y1[rid * K+tid] = shRow[tid];
-    }
-    if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0) 
-    {
-      for (int i = 0; i < N; i++) 
-        {
-          printf("Y1[%d] = %f\n", i, Y0[i]);
-        }
     }
 }
 
@@ -187,7 +171,7 @@ __global__ void recover(
     const int *centroid_LUT,
     const int neurons
 ) {
-    extern  __shared__ float shRow[];
+    __shared__ float shRow[neurons];
     if (centroid_LUT[blockIdx.x] == -1) {
         return;
     }
