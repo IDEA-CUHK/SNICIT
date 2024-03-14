@@ -1,6 +1,7 @@
-#pragma once
+#ifndef SNICIT_BEY_KERNEL_HPP
+#define SNICIT_BEY_KERNEL_HPP
 
-namespace SNICIT_BEY{
+namespace SNICIT_BEY {
 
 __global__ void y_star_gen(
     const float* Y0,
@@ -11,7 +12,8 @@ __global__ void y_star_gen(
 ) {
     int row_idx = threadIdx.y * num_input / blockDim.y;
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
-    __shared__ float shRow[neurons + seed_size + blockDim.y]; // combined diff_arr and tmp_star_row here
+    extern __shared__ float shRow[];
+    int shRowSize = neurons + seed_size + 1024;
     if (threadIdx.x == 0) {
         shRow[neurons+seed_size+threadIdx.y] = (float)row_idx;
     }
@@ -57,8 +59,9 @@ __global__ void coarse_cluster(
         ne_record[blockIdx.x] = true;
         return;
     }
-    __shared__ float thisRow[neurons + y_star_cnt]; // estimated max y* num
+    extern __shared__ float thisRow[];
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
+    int thisRowSize = neurons + 60;
     if (tid < neurons) {
         thisRow[tid] = Y0[blockIdx.x*neurons+tid];
     }
@@ -82,7 +85,6 @@ __global__ void coarse_cluster(
             }
         }
         centroid_LUT[blockIdx.x] = argmin;
-
     }
     __syncthreads();
     argmin = centroid_LUT[blockIdx.x];
@@ -96,7 +98,6 @@ __global__ void coarse_cluster(
         if (count == 0) ne_record[blockIdx.x] = false;
         else ne_record[blockIdx.x] = true;
     }
-
 }
 
 __global__ void sparse_hidden_post(
@@ -109,7 +110,7 @@ __global__ void sparse_hidden_post(
     float* Y1
 ) {
     // (8, 128)
-    __shared__ float shRow[K];
+    extern __shared__ float shRow[];
     int tid = threadIdx.x + threadIdx.y*blockDim.x;
     int rid = rowsY[blockIdx.x];
     if (tid < K) {
@@ -171,7 +172,7 @@ __global__ void recover(
     const int *centroid_LUT,
     const int neurons
 ) {
-    __shared__ float shRow[neurons];
+    extern __shared__ float shRow[];
     if (centroid_LUT[blockIdx.x] == -1) {
         return;
     }
@@ -182,3 +183,5 @@ __global__ void recover(
 }
 
 }
+
+#endif // SNICIT_BEY_KERNEL_HPP
