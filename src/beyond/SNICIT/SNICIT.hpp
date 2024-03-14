@@ -430,19 +430,19 @@ void SNICIT::_input_alloc_read(const std::string& input_path) {
 //i am here.
 
 void SNICIT::_result_alloc_read(const std::string& input_path) {
-  int *label;
+  int* label;
   label = new int[num_input];
+  
   if (!is_cifar) {
-    std::ifstream file(input_path+"t10k-labels-idx1-ubyte", std::ios::binary);
-    if (file.is_open())
-    {
-      int magic_number=0;
-      int number_of_images=0;
-      file.read((char*)&magic_number,sizeof(magic_number));
-      file.read((char*)&number_of_images,sizeof(number_of_images));
-      for(int i = 0; i < 10000; ++i)
-      {
-        unsigned char temp=0;
+    std::ifstream file(input_path + "t10k-labels-idx1-ubyte", std::ios::binary);
+    if (file.is_open()) {
+      int magic_number = 0;
+      int number_of_images = 0;
+      file.read((char*)&magic_number, sizeof(magic_number));
+      file.read((char*)&number_of_images, sizeof(number_of_images));
+      
+      for (int i = 0; i < num_input; ++i) {
+        unsigned char temp = 0;
         file.read((char*)&temp, sizeof(temp));
         label[i] = (int)temp;
       }
@@ -455,21 +455,21 @@ void SNICIT::_result_alloc_read(const std::string& input_path) {
   }
   else {
     std::ifstream file;
-    file.open(input_path+"cifar-label.bin", std::ios::in | std::ios::binary | std::ios::ate);
+    file.open(input_path + "cifar-label.bin", std::ios::in | std::ios::binary | std::ios::ate);
     if (!file) {
-        std::cout << "ERROR: CIFAR-10 result file open failed" << std::endl;
-        exit(1);
+      std::cout << "ERROR: CIFAR-10 result file open failed" << std::endl;
+      exit(1);
     }
 
     auto file_size = file.tellg();
     std::unique_ptr<char[]> buffer(new char[file_size]);
 
-    //Read the entire file at once
+    // Read the entire file at once
     file.seekg(0, std::ios::beg);
     file.read(buffer.get(), file_size);
     file.close();
 
-    for(std::size_t i = 0; i < num_input; ++i){
+    for (std::size_t i = 0; i < num_input; ++i) {
       int l = buffer[i * 3073];
       label[i] = l;
     }
@@ -487,52 +487,54 @@ void SNICIT::_result_alloc_read(const std::string& input_path) {
 }
 
 void SNICIT::_infer() {
-  std::cout<<"inferring......\n";
+  std::cout << "inferring......\n";
   auto _tic = std::chrono::steady_clock::now();
   double sparse_duration = 0.0;
   cudaStream_t dev_stream;
   double post_duration = 0.0;
   checkCuda(cudaStreamCreate(&dev_stream));
+  
   for (int round = 0; round < num_input / batch_size; round++) {
-    std::cout<<"[round "<<round<<"] begins: "<<std::endl;
+    std::cout << "[round " << round << "] begins: " << std::endl;
+    
     if (!is_cifar) {
-      checkCuda(cudaMemcpy(_dev_Y_input, Y_input+round * batch_size * input_size, 
-        batch_size*input_size * sizeof(float), cudaMemcpyHostToDevice));
-      dense_input<<<batch_size, dim3(num_hidden_neurons, (int)(1024/num_hidden_neurons), 1), 
-        sizeof(float)*num_hidden_neurons, dev_stream>>>(_dev_Y_input, 
+      checkCuda(cudaMemcpy(_dev_Y_input, Y_input + round * batch_size * input_size, 
+        batch_size * input_size * sizeof(float), cudaMemcpyHostToDevice));
+      dense_input<<<batch_size, dim3(num_hidden_neurons, (int)(1024 / num_hidden_neurons), 1), 
+        sizeof(float) * num_hidden_neurons, dev_stream>>>(_dev_Y_input, 
         _dev_input_weight, _dev_input_bias, batch_size, input_size, num_hidden_neurons, _dev_Y_hidden[0]);
     }
     else {
-      checkCuda(cudaMemcpy(_dev_Y_hidden[0], Y_input+round * batch_size * input_size, 
-        batch_size*input_size * sizeof(float), cudaMemcpyHostToDevice));
+      checkCuda(cudaMemcpy(_dev_Y_hidden[0], Y_input + round * batch_size * input_size, 
+        batch_size * input_size * sizeof(float), cudaMemcpyHostToDevice));
     }
-    
     
     checkCuda(cudaStreamSynchronize(dev_stream));
     auto sparse_tic = std::chrono::steady_clock::now();
+    
     // pre-convergence
     auto pre_tic = std::chrono::steady_clock::now();
-    for(int cur_layer = 0; cur_layer < threshold; cur_layer++) { // num_layers-2
-      sparse_hidden<<<batch_size, dim3((int)(1024/num_hidden_neurons), num_hidden_neurons, 1), 
-        sizeof(float)*num_hidden_neurons, dev_stream>>>(_dev_Y_hidden[cur_layer%2], 
+    for(int cur_layer = 0; cur_layer < threshold; cur_layer++) {
+      sparse_hidden<<<batch_size, dim3((int)(1024 / num_hidden_neurons), num_hidden_neurons, 1), 
+        sizeof(float) * num_hidden_neurons, dev_stream>>>(_dev_Y_hidden[cur_layer % 2], 
         _dev_hidden_roffw[cur_layer], _dev_hidden_colsw[cur_layer], _dev_hidden_valsw[cur_layer], 
-        _dev_hidden_bias[cur_layer], batch_size, num_hidden_neurons, num_hidden_neurons, _dev_Y_hidden[(cur_layer+1)%2]);
+        _dev_hidden_bias[cur_layer], batch_size, num_hidden_neurons, num_hidden_neurons, _dev_Y_hidden[(cur_layer + 1) % 2]);
       checkCuda(cudaStreamSynchronize(dev_stream));
 
       checkCuda(cudaMemset(
         _dev_Y_hidden[cur_layer % 2],
         0,
-        batch_size*num_hidden_neurons*sizeof(float)
+        batch_size * num_hidden_neurons * sizeof(float)
       ));
     }
     auto pre_toc = std::chrono::steady_clock::now();
     auto pre_duration = std::chrono::duration_cast<std::chrono::microseconds>(pre_toc - pre_tic).count();
-    std::cout<<"[**pre conv**] "<< pre_duration/1000.0<< "ms"<<std::endl;
+    std::cout << "[**pre conv**] " << pre_duration / 1000.0 << "ms" << std::endl;
+    
     // y star generation
     auto cluster_tic = std::chrono::steady_clock::now();
-
-    y_star_gen<<<1, dim3(1024/seed_size, seed_size, 1), 
-      sizeof(float)*(num_hidden_neurons+2*seed_size), dev_stream>>>(_dev_Y_hidden[threshold % 2], y_star_row, batch_size, 
+    y_star_gen<<<1, dim3(1024 / seed_size, seed_size, 1), 
+      sizeof(float) * (num_hidden_neurons + 2 * seed_size), dev_stream>>>(_dev_Y_hidden[threshold % 2], y_star_row, batch_size, 
       num_hidden_neurons, seed_size);
     checkCuda(cudaStreamSynchronize(dev_stream));
     checkCuda(cudaDeviceSynchronize());
@@ -542,42 +544,44 @@ void SNICIT::_infer() {
       if (y_star_row[i] != -1) {
         centroid_LUT[y_star_row[i]] = -1;
         y_star_row[y_star_cnt++] = y_star_row[i];
-        // printf("%drow, label=%d\n", y_star_row[i], _dev_result_label[y_star_row[i]]);
       }
     }
+    
     // coarse cluster
     auto coarse_tic = std::chrono::steady_clock::now();
-
-    coarse_cluster<<<batch_size, dim3(1024/y_star_cnt, y_star_cnt, 1), sizeof(float)*(num_hidden_neurons+y_star_cnt), dev_stream>>>
-    (_dev_Y_hidden[threshold % 2], y_star_row, ne_record, y_star_cnt, centroid_LUT, num_hidden_neurons);
-
+    coarse_cluster<<<batch_size, dim3(1024 / y_star_cnt, y_star_cnt, 1), 
+      sizeof(float) * (num_hidden_neurons + y_star_cnt), dev_stream>>>
+      (_dev_Y_hidden[threshold % 2], y_star_row, ne_record, y_star_cnt, centroid_LUT, num_hidden_neurons);
     checkCuda(cudaStreamSynchronize(dev_stream));
     checkCuda(cudaDeviceSynchronize());
+
     int ne_rows = 0;
     for (int i = 0; i < batch_size; i++) {
       if (ne_record[i] != false) {
         rowsY[ne_rows++] = i;
       }
     }
-    // std::cout<<"non empty rows in delta Y =  "<< ne_rows <<std::endl;
     auto cluster_toc = std::chrono::steady_clock::now();
     auto cluster_duration = std::chrono::duration_cast<std::chrono::microseconds>(cluster_toc - cluster_tic).count();
-    std::cout<<"[**cluster-based conversion**] finished in "<< cluster_duration/1000.0<< "ms"<<std::endl;
+    std::cout << "[**cluster-based conversion**] finished in " << cluster_duration / 1000.0 << "ms" << std::endl;
+    
     // post convergence
     auto post_tic = std::chrono::steady_clock::now();
-    for(int cur_layer = threshold; cur_layer < num_layers; cur_layer++) { // num_layers-2
+    for(int cur_layer = threshold; cur_layer < num_layers; cur_layer++) {
       auto post_p_tic = std::chrono::steady_clock::now();
-      sparse_hidden_post<<<ne_rows, dim3((int)(1024/num_hidden_neurons), num_hidden_neurons, 1), 
-        sizeof(float)*num_hidden_neurons, dev_stream>>>(rowsY, _dev_Y_hidden[threshold % 2], 
+      sparse_hidden_post<<<ne_rows, dim3((int)(1024 / num_hidden_neurons), num_hidden_neurons, 1), 
+        sizeof(float) * num_hidden_neurons, dev_stream>>>(rowsY, _dev_Y_hidden[threshold % 2], 
         _dev_hidden_roffw[cur_layer], _dev_hidden_colsw[cur_layer], _dev_hidden_valsw[cur_layer], 
-        batch_size, num_hidden_neurons, num_hidden_neurons, _dev_Y_hidden[(1+threshold) % 2]);
+        batch_size, num_hidden_neurons, num_hidden_neurons, _dev_Y_hidden[(1 + threshold) % 2]);
       checkCuda(cudaStreamSynchronize(dev_stream));
+      
       update_post<<<ne_rows, num_hidden_neurons, 0,  dev_stream>>>(
-        rowsY, centroid_LUT, _dev_Y_hidden[(1+threshold) % 2], _dev_hidden_bias[cur_layer], 
+        rowsY, centroid_LUT, _dev_Y_hidden[(1 + threshold) % 2], _dev_hidden_bias[cur_layer], 
         num_hidden_neurons, ne_record, _dev_Y_hidden[threshold % 2]
       );
       checkCuda(cudaStreamSynchronize(dev_stream));
       checkCuda(cudaDeviceSynchronize());
+
       int new_ne_rows = 0;
       for (int i = 0; i < ne_rows; i++) {
         if (ne_record[rowsY[i]] != false) {
@@ -585,54 +589,52 @@ void SNICIT::_infer() {
         }
       }
       ne_rows = new_ne_rows;
-      // std::cout<<"non empty rows in delta Y =  "<< ne_rows <<std::endl;
+      
       checkCuda(cudaMemset(
-        _dev_Y_hidden[(1+threshold) % 2],
+        _dev_Y_hidden[(1 + threshold) % 2],
         0,
-        batch_size*num_hidden_neurons*sizeof(float)
+        batch_size * num_hidden_neurons * sizeof(float)
       ));
 
       auto post_p_toc = std::chrono::steady_clock::now();
       auto post_p_duration = std::chrono::duration_cast<std::chrono::microseconds>(post_p_toc - post_p_tic).count();
-      // std::cout<<"[**post convergence**]finished layer "<< cur_layer <<" in "<< post_p_duration/1000.0<< "ms"<<std::endl;
     }
     auto post_toc = std::chrono::steady_clock::now();
     post_duration = std::chrono::duration_cast<std::chrono::microseconds>(post_toc - post_tic).count();
-    std::cout<<"[**post convergence**]finished in "<< post_duration/1000.0<< "ms"<<std::endl;
+    std::cout << "[**post convergence**] finished in " << post_duration / 1000.0 << "ms" << std::endl;
     // recovery
     auto recovery_tic = std::chrono::steady_clock::now();
-    recover<<<batch_size, num_hidden_neurons, sizeof(float)*num_hidden_neurons, dev_stream>>>(_dev_Y_hidden[threshold % 2], centroid_LUT, num_hidden_neurons);
+    recover<<<batch_size, num_hidden_neurons, sizeof(float) * num_hidden_neurons, dev_stream>>>(_dev_Y_hidden[threshold % 2], centroid_LUT, num_hidden_neurons);
     checkCuda(cudaStreamSynchronize(dev_stream));
     auto recovery_toc = std::chrono::steady_clock::now();
     auto recovery_duration = std::chrono::duration_cast<std::chrono::microseconds>(recovery_toc - recovery_tic).count();
-    std::cout<<"[**recovery**]finished in "<< recovery_duration/1000.0<< "ms"<<std::endl;
+    std::cout << "[**recovery**] finished in " << recovery_duration / 1000.0 << "ms" << std::endl;
+    
     auto sparse_toc = std::chrono::steady_clock::now();
     sparse_duration += std::chrono::duration_cast<std::chrono::microseconds>(sparse_toc - sparse_tic).count();
 
     // output layer
-    dense_output<<<batch_size, dim3(num_classes, (int)(1024/num_classes), 1), 
-      sizeof(float)*num_classes, dev_stream>>>(_dev_Y_hidden[threshold % 2], 
+    dense_output<<<batch_size, dim3(num_classes, (int)(1024 / num_classes), 1), 
+      sizeof(float) * num_classes, dev_stream>>>(_dev_Y_hidden[threshold % 2], 
       _dev_output_weight, _dev_output_bias, batch_size, num_hidden_neurons, num_classes, _dev_Y_output);
     checkCuda(cudaStreamSynchronize(dev_stream));
-    checkCuda(cudaMemcpy(_dev_Y_output_whole+round * batch_size * num_classes, _dev_Y_output,
-      batch_size*num_classes * sizeof(float), cudaMemcpyDeviceToDevice));
+    checkCuda(cudaMemcpy(_dev_Y_output_whole + round * batch_size * num_classes, _dev_Y_output,
+      batch_size * num_classes * sizeof(float), cudaMemcpyDeviceToDevice));
   }
-  // std::cout<<"SNICIT runtime: "<< sparse_duration/1000.0<< "ms"<<std::endl;
+  
   int* cnt;
-  checkCuda(cudaMallocManaged(
-    &cnt,
-    sizeof(int)
-  ));
+  checkCuda(cudaMallocManaged(&cnt, sizeof(int)));
   check_acc<<<1, 1024, sizeof(int), dev_stream>>>(_dev_Y_output_whole, num_classes, num_input, _dev_result_label, cnt);
   checkCuda(cudaStreamSynchronize(dev_stream));
   checkCuda(cudaDeviceSynchronize());
   
-  std::cout<<"SNICIT info: accuracy "<<100*((float)cnt[0]/(float)num_input)<<"%"<<" runtime "<< sparse_duration/1000.0<< "ms"
-  <<" avgpost "<<post_duration/(1000*(num_layers-threshold))<< "ms"<<std::endl;
+  std::cout << "SNICIT info: accuracy " << 100 * ((float)cnt[0] / (float)num_input) << "%" 
+            << " runtime " << sparse_duration / 1000.0 << "ms"
+            << " avgpost " << post_duration / (1000 * (num_layers - threshold)) << "ms" << std::endl;
+  
   auto _toc = std::chrono::steady_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(_toc - _tic).count();
-  std::cout<<"[Total] finished inferring in "<<duration/1000.0<< "ms"<<std::endl;
-  
+  std::cout << "[Total] finished inferring in " << duration / 1000.0 << "ms" << std::endl;
 }
 
-}
+
