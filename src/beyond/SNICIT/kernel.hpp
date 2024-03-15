@@ -12,37 +12,38 @@ __global__ void y_star_gen(
 ) {
     int row_idx = threadIdx.y * num_input / blockDim.y;
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
-    extern __shared__ float shRow[];
     int shRowSize = neurons + seed_size + 1024;
+    extern __shared__ float shRow[];
+    float* shRowPtr = shRow;
     if (threadIdx.x == 0) {
-        shRow[neurons+seed_size+threadIdx.y] = (float)row_idx;
+        shRowPtr[neurons+seed_size+threadIdx.y] = (float)row_idx;
     }
     __syncthreads();
     for (int i = 0; i < seed_size; i++) {
-        if (shRow[neurons+seed_size+i]!=-1.0) {
+        if (shRowPtr[neurons+seed_size+i]!=-1.0) {
             if (tid < neurons) {
-                shRow[tid] = Y0[neurons*(int)shRow[neurons+seed_size+i]+tid]; // to be compared
+                shRowPtr[tid] = Y0[neurons*(int)shRowPtr[neurons+seed_size+i]+tid]; // to be compared
             }
             if (tid < seed_size) {
-                shRow[neurons+tid] = 0;
+                shRowPtr[neurons+tid] = 0;
             }
             __syncthreads();
-            if (shRow[neurons+seed_size+threadIdx.y] != -1.0) {
+            if (shRowPtr[neurons+seed_size+threadIdx.y] != -1.0) {
                 for (int j = threadIdx.x; j < neurons; j += blockDim.x) {
-                    if (abs(Y0[neurons*row_idx+j] - shRow[j]) > 0.03) {
-                        atomicAdd(&shRow[neurons+threadIdx.y], 1);
+                    if (abs(Y0[neurons*row_idx+j] - shRowPtr[j]) > 0.03) {
+                        atomicAdd(&shRowPtr[neurons+threadIdx.y], 1);
                     }
                 }
             }
             __syncthreads();
-            if (threadIdx.y!=i && shRow[neurons+threadIdx.y] < neurons*0.03) {
-                shRow[neurons+seed_size+threadIdx.y] = -1.0;
+            if (threadIdx.y!=i && shRowPtr[neurons+threadIdx.y] < neurons*0.03) {
+                shRowPtr[neurons+seed_size+threadIdx.y] = -1.0;
             }
             __syncthreads();
         }
     }
     if (tid < seed_size) {
-        y_star_row[tid] = (int)shRow[neurons+seed_size+tid];
+        y_star_row[tid] = (int)shRowPtr[neurons+seed_size+tid];
     }
     __syncthreads();
 }
@@ -59,19 +60,20 @@ __global__ void coarse_cluster(
         ne_record[blockIdx.x] = true;
         return;
     }
-    extern __shared__ float thisRow[];
-    int tid = threadIdx.x + threadIdx.y * blockDim.x;
     int thisRowSize = neurons + 60;
+    extern __shared__ float thisRow[];
+    float* thisRowPtr = thisRow;
+    int tid = threadIdx.x + threadIdx.y * blockDim.x;
     if (tid < neurons) {
-        thisRow[tid] = Y0[blockIdx.x*neurons+tid];
+        thisRowPtr[tid] = Y0[blockIdx.x*neurons+tid];
     }
     if (tid < y_star_cnt) {
-        thisRow[neurons+tid] = 0;
+        thisRowPtr[neurons+tid] = 0;
     }
     __syncthreads();
     for(int i = threadIdx.x; i < neurons; i += blockDim.x) {
-        if (abs(Y0[neurons*y_star_row[threadIdx.y]+i] - thisRow[i]) > 0.04) {
-            atomicAdd(&thisRow[neurons+threadIdx.y], 1);
+        if (abs(Y0[neurons*y_star_row[threadIdx.y]+i] - thisRowPtr[i]) > 0.04) {
+            atomicAdd(&thisRowPtr[neurons+threadIdx.y], 1);
         }
     }
     __syncthreads();
@@ -79,8 +81,8 @@ __global__ void coarse_cluster(
     float min_num = neurons+1;
     if (tid == 0) {
         for (int i = 0; i < y_star_cnt; i++) {
-            if (min_num > thisRow[neurons+i]) {
-                min_num = thisRow[neurons+i];
+            if (min_num > thisRowPtr[neurons+i]) {
+                min_num = thisRowPtr[neurons+i];
                 argmin = y_star_row[i];
             }
         }
@@ -88,8 +90,8 @@ __global__ void coarse_cluster(
     }
     __syncthreads();
     argmin = centroid_LUT[blockIdx.x];
-    float v = ((tid < neurons) && (abs(thisRow[tid]-Y0[neurons*argmin+tid])>0.04)) ?
-        thisRow[tid]-Y0[neurons*argmin+tid] : 0;
+    float v = ((tid < neurons) && (abs(thisRowPtr[tid]-Y0[neurons*argmin+tid])>0.04)) ?
+        thisRowPtr[tid]-Y0[neurons*argmin+tid] : 0;
     if (tid < neurons) {
         Y0[blockIdx.x*neurons+tid] = v; // change blockIdx.x to argmin
     }
@@ -142,7 +144,7 @@ __global__ void update_post(
     const int *rowsY,
     const int *centroid_LUT,
     const float* Y0,
-    const float* bias,
+    const float* bias, // Assuming bias is properly defined and initialized
     const int neurons,
     bool* ne_record,
     float* Y1
