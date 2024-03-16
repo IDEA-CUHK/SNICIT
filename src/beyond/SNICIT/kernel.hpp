@@ -103,42 +103,45 @@ __global__ void coarse_cluster(
 }
 
 __global__ void sparse_hidden_post(
-   const int *rowsY,
-   const float* Y0,
-   const int *dev_cur_delta_index,
-   const float *dev_cur_nonzero_values,
-   const int *dev_cur_minimum,
-   const int *dev_cur_row_offset,
-   const int *dev_cur_avg_nnz,
-   const int *dev_cur_slope,
-   const int M, const int K,
-   float* Y1
+    const int *rowsY,
+    const float* Y0,
+    const int *dev_cur_delta_index,
+    const float *dev_cur_nonzero_values,
+    const int *dev_cur_minimum,
+    const int *dev_cur_row_offset,
+    const int *dev_cur_avg_nnz,
+    const int *dev_cur_slope,
+    const int M, const int K,
+    float* Y1
 ) {
-   extern __shared__ float shRow[];
-   int tid = threadIdx.x + threadIdx.y*blockDim.x;
-   int rid = rowsY[blockIdx.x];
-   if (tid < K) {
-       shRow[tid] = 0; 
-   }
-   __syncthreads();
+    extern __shared__ float shRow[];
+    int tid = threadIdx.x + threadIdx.y * blockDim.x;
+    int rid = rowsY[blockIdx.x];
+    if (tid < K) {
+        shRow[tid] = 0;
+    }
+    __syncthreads();
 
-   int row_nnz = dev_cur_avg_nnz[rid] + dev_cur_row_offset[rid];
+    int row_nnz = dev_cur_avg_nnz[rid] + dev_cur_row_offset[rid];
 
-   for (int i = threadIdx.y; i < row_nnz; i += blockDim.y) {
-       float valY = Y0[rid * dev_cur_minimum[rid] + dev_cur_delta_index[rid * row_nnz + i]];
-       if(valY == 0) {
-           continue;
-       }
+    for (int i = threadIdx.y; i < row_nnz; i += blockDim.y) {
+        // First step: Get original column index
+        int Di = dev_cur_delta_index[rid * row_nnz + i] + dev_cur_minimum[rid];
+        float valY = Y0[rid * dev_cur_minimum[rid] + Di];
+        if (valY == 0) {
+            continue;
+        }
 
-       int colW = dev_cur_delta_index[rid * row_nnz + i] + dev_cur_minimum[rid] + i * dev_cur_slope[rid];
-       float valW = dev_cur_nonzero_values[rid * row_nnz + i];
-       atomicAdd(&shRow[colW], valY * valW);
-   }
+        // Second step: Get actual column index
+        int colW = Di + i * dev_cur_slope[rid];
+        float valW = dev_cur_nonzero_values[rid * row_nnz + i];
+        atomicAdd(&shRow[colW], valY * valW);
+    }
 
-   __syncthreads();
-   if (tid < K) {
-       Y1[rid * K+tid] = shRow[tid];
-   }
+    __syncthreads();
+    if (tid < K) {
+        Y1[rid * K + tid] = shRow[tid];
+    }
 }
 
 __global__ void update_post(
