@@ -570,14 +570,21 @@ void SNICIT::_infer() {
     auto sparse_tic = std::chrono::steady_clock::now();
     // pre-convergence
     auto pre_tic = std::chrono::steady_clock::now();
-    for(int cur_layer = 0; cur_layer < threshold; cur_layer++) { // num_layers-2
-      sparse_hidden<<<batch_size, dim3((int)(1024/num_hidden_neurons), num_hidden_neurons, 1), 
-        sizeof(float)*num_hidden_neurons, dev_stream>>>(_dev_Y_hidden[cur_layer%2], 
-       _dev_hidden_delta_index[cur_layer], _dev_hidden_nonzero_values[cur_layer],
-                _dev_hidden_minimum[cur_layer], _dev_hidden_row_offset[cur_layer],
-                _dev_hidden_avg_nnz[cur_layer], _dev_hidden_slope[cur_layer], 
-        _dev_hidden_bias[cur_layer], batch_size, num_hidden_neurons, num_hidden_neurons, _dev_Y_hidden[(cur_layer+1)%2]);
-      checkCuda(cudaStreamSynchronize(dev_stream));
+    for (int cur_layer = 0; cur_layer < threshold; cur_layer++) {
+    sparse_hidden<<<batch_size, dim3((int)(1024/num_hidden_neurons), num_hidden_neurons, 1), sizeof(float)*num_hidden_neurons, dev_stream>>>(
+        _dev_Y_hidden[cur_layer%2],
+        _dev_hidden_row_offset[cur_layer],
+        _dev_hidden_delta_index[cur_layer],
+        _dev_hidden_nonzero_values[cur_layer],
+        _dev_hidden_bias[cur_layer],
+        batch_size,
+        _dev_hidden_slope[cur_layer],
+        num_hidden_neurons,
+        _dev_Y_hidden[(cur_layer+1)%2]
+    );
+
+    checkCuda(cudaStreamSynchronize(dev_stream));
+}
 
       checkCuda(cudaMemset(
         _dev_Y_hidden[cur_layer % 2],
