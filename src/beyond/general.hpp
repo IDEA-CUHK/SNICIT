@@ -103,37 +103,36 @@ __global__ void coarse_cluster(
     }
 }
 
-__global__ void sparse_hidden_post(
-    const int *rowsY,
+__global__ void sparse_hidden(
     const float* Y0,
-    const int *dev_cur_delta_index,
-    const float *dev_cur_nonzero_values,
-    const int *dev_cur_minimum,
-    const int *dev_cur_row_offset,
-    const int *dev_cur_avg_nnz,
-    const int *dev_cur_slope,
-    const int M, const int K,
+    const int* dev_cur_row_offset,
+    const int* dev_cur_delta_index,
+    const float* dev_cur_nonzero_values,
+    const float* dev_cur_bias,
+    const int* dev_cur_slope,
+    const int K,
     float* Y1
 ) {
     extern __shared__ float shRow[];
     int shRowSize = K;
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
-    int rid = rowsY[blockIdx.x];
+    int rid = blockIdx.x;
+
     if (tid < K) {
-        shRow[tid] = 0;
+        shRow[tid] = dev_cur_bias[tid];
     }
     __syncthreads();
 
-    int row_nnz = dev_cur_avg_nnz[rid] + dev_cur_row_offset[rid];
+    int row_nnz = dev_cur_row_offset[rid + 1] - dev_cur_row_offset[rid];
     for (int i = threadIdx.y; i < row_nnz; i += blockDim.y) {
-        int Di = dev_cur_delta_index[rid * row_nnz + i] + dev_cur_minimum[rid];
-        float valY = Y0[rid * dev_cur_minimum[rid] + Di];
+        int Di = dev_cur_delta_index[dev_cur_row_offset[rid] + i];
+        float valY = Y0[rid * K + Di];
         if (valY == 0) {
             continue;
         }
 
         int colW = Di + i * dev_cur_slope[rid];
-        float valW = dev_cur_nonzero_values[rid * row_nnz + i];
+        float valW = dev_cur_nonzero_values[dev_cur_row_offset[rid] + i];
         atomicAdd(&shRow[colW], valY * valW);
     }
 
