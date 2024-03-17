@@ -27,6 +27,12 @@ class SNICIT{
     float* _dev_output_weight;
     float* _dev_output_bias;
     int* _dev_result_label;
+      std::vector<int*> _dev_hidden_delta_index;
+    std::vector<float*> _dev_hidden_nonzero_values;
+    std::vector<int*> _dev_hidden_minimum;
+    std::vector<int*> _dev_hidden_row_offset;
+    std::vector<int*> _dev_hidden_avg_nnz;
+    std::vector<int*> _dev_hidden_slope;
     
 
 
@@ -94,20 +100,36 @@ SNICIT::SNICIT(
  {
   std::cout<<"Constructing SNICIT method......\n";
   input_size = is_cifar ? _num_hidden_neurons : 784;
+     // _dev_hidden_delta_index.reserve(num_layers);
+   // _dev_hidden_nonzero_values.reserve(num_layers);
+   // _dev_hidden_minimum.reserve(num_layers);
+   // _dev_hidden_row_offset.reserve(num_layers);
+   // _dev_hidden_avg_nnz.reserve(num_layers);
+   // _dev_hidden_slope.reserve(num_layers);
+
 }
 
 SNICIT::~SNICIT() {
   for(auto& each_Y : _dev_Y_hidden) {
     checkCuda(cudaFree(each_Y));
   }
-  for(auto& each_dev_hidden_roffw : _dev_hidden_roffw) {
-    checkCuda(cudaFree(each_dev_hidden_roffw));
+  for(auto& each_dev_hidden_delta_index : _dev_hidden_delta_index) {
+    checkCuda(cudaFree(each_dev_hidden_delta_index));
   }
-  for(auto& each_dev_hidden_colsw : _dev_hidden_colsw) {
-    checkCuda(cudaFree(each_dev_hidden_colsw));
+  for(auto& each_dev_hidden_nonzero_values : _dev_hidden_nonzero_values) {
+    checkCuda(cudaFree(each_dev_hidden_nonzero_values));
   }
-  for(auto& each_dev_hidden_valsw : _dev_hidden_valsw) {
-    checkCuda(cudaFree(each_dev_hidden_valsw));
+  for(auto& each_dev_hidden_minimum : _dev_hidden_minimum) {
+    checkCuda(cudaFree(each_dev_hidden_minimum));
+  }
+  for(auto& each_dev_hidden_row_offset : _dev_hidden_row_offset) {
+    checkCuda(cudaFree(each_dev_hidden_row_offset));
+  }
+  for(auto& each_dev_hidden_avg_nnz : _dev_hidden_avg_nnz) {
+    checkCuda(cudaFree(each_dev_hidden_avg_nnz));
+  }
+  for(auto& each_dev_hidden_slope : _dev_hidden_slope) {
+    checkCuda(cudaFree(each_dev_hidden_slope));
   }
   for(auto& each_dev_hidden_bias : _dev_hidden_bias) {
     checkCuda(cudaFree(each_dev_hidden_bias));
@@ -173,195 +195,226 @@ void SNICIT::_preprocess(const std::string& input_path) {
 
 
 void SNICIT::_weight_bias_alloc_read() {
-  std::string line;
-  std::ifstream MyReadFile;
-  int ptr = 0;
-  int file_offset;
-  if (!is_cifar) {
-    file_offset = 2;
-    // allocate input layer's weight and bias
-    checkCuda(cudaMalloc(
-      &_dev_input_weight,
-      input_size * num_hidden_neurons * sizeof(float)
-    ));
-    checkCuda(cudaMalloc(
-      &_dev_input_bias,
-      num_hidden_neurons * sizeof(float)
-    ));
-    // read input layer's weight and bias
-    float *input_weight;
-    float *input_bias;
-    input_weight = new float[input_size * num_hidden_neurons];
-    input_bias = new float[num_hidden_neurons];
+    std::string line;
+    std::ifstream MyReadFile;
+    int ptr = 0;
+    int file_offset;
+    if (!is_cifar) {
+        file_offset = 2;
+        // allocate input layer's weight and bias
+        checkCuda(cudaMalloc(
+            &_dev_input_weight,
+            input_size * num_hidden_neurons * sizeof(float)
+        ));
+        checkCuda(cudaMalloc(
+            &_dev_input_bias,
+            num_hidden_neurons * sizeof(float)
+        ));
+        // read input layer's weight and bias
+        float *input_weight;
+        float *input_bias;
+        input_weight = new float[input_size * num_hidden_neurons];
+        input_bias = new float[num_hidden_neurons];
 
-    MyReadFile = std::ifstream(weight_path+"l1-dense.tsv");
-    if (MyReadFile.is_open()) {
-      while(std::getline(MyReadFile, line)){
-        input_weight[ptr++] = std::stof(line);
-      }
-    }
-    else {
-      std::cout << "ERROR: open weight file " << weight_path+"l1-dense.tsv"<<std::endl;
-      exit(1);
-    }
-    MyReadFile.close();
-    MyReadFile = std::ifstream(bias_path+"l1-dense.tsv");
-    if (MyReadFile.is_open()) {
-      ptr = 0;
-      while(std::getline(MyReadFile, line)){
-        input_bias[ptr++] = std::stof(line);
-      }
-    }
-    else {
-      std::cout << "ERROR: open bias file " << weight_path+"l1-dense.tsv"<<std::endl;
-      exit(1);
-    }
-    MyReadFile.close();
-    // copy input layer's weight and bias
-    checkCuda(cudaMemcpy(_dev_input_weight, input_weight, 
-      input_size * num_hidden_neurons * sizeof(float), cudaMemcpyHostToDevice));
-    checkCuda(cudaMemcpy(_dev_input_bias, input_bias, 
-      num_hidden_neurons * sizeof(float), cudaMemcpyHostToDevice));
-    delete [] input_weight;
-    delete [] input_bias;
-  }
-  else {file_offset = 1;}
-  for(int hidden_layer = 0; hidden_layer < num_layers; hidden_layer++) {
-    int *hidden_roffw;
-    int *hidden_colsw;
-    float *hidden_valsw;
-    float *hidden_bias;
-
-    hidden_roffw = new int[num_hidden_neurons+1];
-    hidden_colsw = new int[nnz];
-    hidden_valsw = new float[nnz];
-    hidden_bias = new float[num_hidden_neurons];
-    memset(hidden_roffw, 0, (num_hidden_neurons+1)*sizeof(int));
-    int* dev_cur_roffw;
-    int* dev_cur_colsw;
-    float* dev_cur_valsw;
-    float* dev_cur_bias;
-
-    // allocate hidden layer's weight and bias
-    checkCuda(cudaMallocManaged(
-      &dev_cur_roffw,
-      (num_hidden_neurons+1) * sizeof(float)
-    ));
-    checkCuda(cudaMallocManaged(
-      &dev_cur_colsw,
-      nnz * sizeof(float)
-    ));
-    checkCuda(cudaMallocManaged(
-      &dev_cur_valsw,
-      nnz * sizeof(float)
-    ));
-
-    // read hidden layer
-    
-    MyReadFile = std::ifstream(weight_path+"l"+std::to_string(hidden_layer+file_offset)+"-sparse.tsv");
-    if (MyReadFile.is_open()) {
-      ptr = 0;
-
-      std::vector<std::string> tokens;
-      while(std::getline(MyReadFile, line)){
-
-        std::stringstream lineStream(line);
-        std::string token;
-        tokens.clear();
-        while(std::getline(lineStream, token, '\t')) {
-          tokens.push_back(std::move(token));
+        MyReadFile = std::ifstream(weight_path + "l1-dense.tsv");
+        if (MyReadFile.is_open()) {
+            while (std::getline(MyReadFile, line)) {
+                input_weight[ptr++] = std::stof(line);
+            }
+        } else {
+            std::cout << "ERROR: open weight file " << weight_path + "l1-dense.tsv" << std::endl;
+            exit(1);
         }
+        MyReadFile.close();
+        MyReadFile = std::ifstream(bias_path + "l1-dense.tsv");
+        if (MyReadFile.is_open()) {
+            ptr = 0;
+            while (std::getline(MyReadFile, line)) {
+                input_bias[ptr++] = std::stof(line);
+            }
+        } else {
+            std::cout << "ERROR: open bias file " << weight_path + "l1-dense.tsv" << std::endl;
+            exit(1);
+        }
+        MyReadFile.close();
+        // copy input layer's weight and bias
+        checkCuda(cudaMemcpy(_dev_input_weight, input_weight,
+                             input_size * num_hidden_neurons * sizeof(float), cudaMemcpyHostToDevice));
+        checkCuda(cudaMemcpy(_dev_input_bias, input_bias,
+                             num_hidden_neurons * sizeof(float), cudaMemcpyHostToDevice));
+        delete[] input_weight;
+        delete[] input_bias;
+    } else {
+        file_offset = 1;
+    }
+    for (int hidden_layer = 0; hidden_layer < num_layers; hidden_layer++) {
+        int *hidden_delta_index;
+        float *hidden_nonzero_values;
+        int *hidden_minimum;
+        int *hidden_row_offset;
+        int *hidden_avg_nnz;
+        int *hidden_slope;
 
-        hidden_roffw[std::stoi(tokens[0])+1]++;
-        hidden_colsw[ptr] = std::stoi(tokens[1]);
-        hidden_valsw[ptr] = std::stof(tokens[2]);
-        ptr++;
-      }
-      for (int i = 0; i < num_hidden_neurons; i++)
+        hidden_delta_index = new int[nnz];
+        hidden_nonzero_values = new float[nnz];
+        hidden_minimum = new int[num_hidden_neurons];
+        hidden_row_offset = new int[num_hidden_neurons];
+        hidden_avg_nnz = new int[num_hidden_neurons];
+        hidden_slope = new int[num_hidden_neurons];
+
+        int *dev_cur_delta_index;
+        float *dev_cur_nonzero_values;
+        int *dev_cur_minimum;
+        int *dev_cur_row_offset;
+        int *dev_cur_avg_nnz;
+        int *dev_cur_slope;
+
+        // allocate hidden layer's weight and bias
+        checkCuda(cudaMallocManaged(
+            &dev_cur_delta_index,
+            nnz * sizeof(int)
+        ));
+        checkCuda(cudaMallocManaged(
+            &dev_cur_nonzero_values,
+            nnz * sizeof(float)
+        ));
+        checkCuda(cudaMallocManaged(
+            &dev_cur_minimum,
+            num_hidden_neurons * sizeof(int)
+        ));
+        checkCuda(cudaMallocManaged(
+            &dev_cur_row_offset,
+            num_hidden_neurons * sizeof(int)
+        ));
+        checkCuda(cudaMallocManaged(
+            &dev_cur_avg_nnz,
+            num_hidden_neurons * sizeof(int)
+        ));
+        checkCuda(cudaMallocManaged(
+            &dev_cur_slope,
+            num_hidden_neurons * sizeof(int)
+        ));
+
+        // read hidden layer
+        MyReadFile = std::ifstream(weight_path + "l" + std::to_string(hidden_layer + file_offset) + "_sparse.tsv");
+        if (MyReadFile.is_open()) {
+            ptr = 0;
+            std::vector<std::string> tokens;
+            while (std::getline(MyReadFile, line)) {
+                std::stringstream lineStream(line);
+                std::string token;
+                tokens.clear();
+                while (std::getline(lineStream, token, '\t')) {
+                    tokens.push_back(std::move(token));
+                }
+
+                hidden_delta_index[ptr] = std::stoi(tokens[0]);
+                hidden_nonzero_values[ptr] = std::stoi(tokens[1]);
+                hidden_minimum[ptr] = std::stoi(tokens[2]);
+                hidden_row_offset[ptr] = std::stoi(tokens[3]);
+                hidden_avg_nnz[ptr] = std::stoi(tokens[4]);
+                hidden_slope[ptr] = std::stoi(tokens[5]);
+                ptr++;
+            }
+             for (int i = 0; i < num_hidden_neurons; i++)
       {
-          hidden_roffw[i + 1] += hidden_roffw[i];
+          hidden_row_offset[i + 1] += hidden_row_offset[i];
       }
-    }
-    else {
-      std::cout << "ERROR: open weight file " << weight_path+"l"+
-        std::to_string(hidden_layer+file_offset)+"-sparse.tsv"<<std::endl;
-      exit(1);
-    }
-    MyReadFile.close();
-    // copy hidden layer
-    checkCuda(cudaMemcpy(dev_cur_roffw, hidden_roffw, 
-      (num_hidden_neurons+1) * sizeof(int), cudaMemcpyHostToDevice));
-    checkCuda(cudaMemcpy(dev_cur_colsw, hidden_colsw, 
-      nnz * sizeof(int), cudaMemcpyHostToDevice));
-    checkCuda(cudaMemcpy(dev_cur_valsw, hidden_valsw, 
-      nnz * sizeof(float), cudaMemcpyHostToDevice));
-    _dev_hidden_roffw.emplace_back(dev_cur_roffw);
-    _dev_hidden_colsw.emplace_back(dev_cur_colsw);
-    _dev_hidden_valsw.emplace_back(dev_cur_valsw);
+        } else {
+            std::cout << "ERROR: open weight file " << weight_path + "l" +
+                      std::to_string(hidden_layer + file_offset) + "_sparse.tsv" << std::endl;
+            exit(1);
+        }
+        MyReadFile.close();
+        // copy hidden layer
+        checkCuda(cudaMemcpy(dev_cur_delta_index, hidden_delta_index,
+                             nnz * sizeof(int), cudaMemcpyHostToDevice));
+        checkCuda(cudaMemcpy(dev_cur_nonzero_values, hidden_nonzero_values,
+                             nnz * sizeof(float), cudaMemcpyHostToDevice));
+        checkCuda(cudaMemcpy(dev_cur_minimum, hidden_minimum,
+                             num_hidden_neurons * sizeof(int), cudaMemcpyHostToDevice));
+        checkCuda(cudaMemcpy(dev_cur_row_offset, hidden_row_offset,
+                             num_hidden_neurons * sizeof(int), cudaMemcpyHostToDevice));
+        checkCuda(cudaMemcpy(dev_cur_avg_nnz, hidden_avg_nnz,
+                             num_hidden_neurons * sizeof(int), cudaMemcpyHostToDevice));
+        checkCuda(cudaMemcpy(dev_cur_slope, hidden_slope,
+                             num_hidden_neurons * sizeof(int), cudaMemcpyHostToDevice));
 
-    checkCuda(cudaMallocManaged(
-      &dev_cur_bias,
-      num_hidden_neurons * sizeof(float)
+        _dev_hidden_delta_index.emplace_back(dev_cur_delta_index);
+        _dev_hidden_nonzero_values.emplace_back(dev_cur_nonzero_values);
+        _dev_hidden_minimum.emplace_back(dev_cur_minimum);
+        _dev_hidden_row_offset.emplace_back(dev_cur_row_offset);
+        _dev_hidden_avg_nnz.emplace_back(dev_cur_avg_nnz);
+        _dev_hidden_slope.emplace_back(dev_cur_slope);
+
+        float *hidden_bias;
+        hidden_bias = new float[num_hidden_neurons];
+        float *dev_cur_bias;
+
+        checkCuda(cudaMallocManaged(
+            &dev_cur_bias,
+            num_hidden_neurons * sizeof(float)
+        ));
+
+        MyReadFile = std::ifstream(bias_path + "l" + std::to_string(hidden_layer + file_offset) + "_sparse.tsv");
+        if (MyReadFile.is_open()) {
+            ptr = 0;
+            while (std::getline(MyReadFile, line)) {
+                hidden_bias[ptr++] = std::stof(line);
+            }
+        } else {
+            std::cout << "ERROR: open bias file " << bias_path + "l" +
+                      std::to_string(hidden_layer + file_offset) + "_sparse.tsv" << std::endl;
+            exit(1);
+        }
+        MyReadFile.close();
+
+        checkCuda(cudaMemcpy(dev_cur_bias, hidden_bias,
+                             num_hidden_neurons * sizeof(float), cudaMemcpyHostToDevice));
+
+        _dev_hidden_bias.emplace_back(dev_cur_bias);
+
+        delete[] hidden_delta_index;
+        delete[] hidden_nonzero_values;
+        delete[] hidden_minimum;
+        delete[] hidden_row_offset;
+        delete[] hidden_avg_nnz;
+        delete[] hidden_slope;
+        delete[] hidden_bias;
+    }
+
+    checkCuda(cudaMalloc(
+        &_dev_output_weight,
+        num_hidden_neurons * num_classes * sizeof(float)
     ));
-
-
-    MyReadFile = std::ifstream(bias_path+"l"+std::to_string(hidden_layer+file_offset)+"-sparse.tsv");
-    if (MyReadFile.is_open()) {
-      ptr = 0;
-      while(std::getline(MyReadFile, line)){
-        hidden_bias[ptr++] = std::stof(line);
-      }
+    checkCuda(cudaMalloc(
+        &_dev_output_bias,
+        num_classes * sizeof(float)
+    ));
+    float *output_weight;
+    float *output_bias;
+    output_weight = new float[num_hidden_neurons * num_classes];
+    output_bias = new float[num_classes];
+    MyReadFile = std::ifstream(weight_path + "l" + std::to_string(num_layers + file_offset) + "-dense.tsv");
+    ptr = 0;
+    while (std::getline(MyReadFile, line)) {
+        output_weight[ptr++] = std::stof(line);
     }
-    else {
-      std::cout << "ERROR: open bias file " << bias_path+"l"+
-        std::to_string(hidden_layer+file_offset)+"-sparse.tsv"<<std::endl;
-      exit(1);
+    MyReadFile.close();
+    MyReadFile = std::ifstream(bias_path + "l" + std::to_string(num_layers + file_offset) + "-dense.tsv");
+    ptr = 0;
+    while (std::getline(MyReadFile, line)) {
+        output_bias[ptr++] = std::stof(line);
     }
     MyReadFile.close();
 
-    checkCuda(cudaMemcpy(dev_cur_bias, hidden_bias, 
-      num_hidden_neurons * sizeof(float), cudaMemcpyHostToDevice));
+    checkCuda(cudaMemcpy(_dev_output_weight, output_weight,
+                         num_hidden_neurons * num_classes * sizeof(float), cudaMemcpyHostToDevice));
+    checkCuda(cudaMemcpy(_dev_output_bias, output_bias,
+                         num_classes * sizeof(float), cudaMemcpyHostToDevice));
 
-    _dev_hidden_bias.emplace_back(dev_cur_bias);
-
-    delete [] hidden_roffw;
-    delete [] hidden_colsw;
-    delete [] hidden_valsw;
-    delete [] hidden_bias;
-  }
-
-  checkCuda(cudaMalloc(
-    &_dev_output_weight,
-    num_hidden_neurons * num_classes * sizeof(float)
-  ));
-  checkCuda(cudaMalloc(
-    &_dev_output_bias,
-    num_classes * sizeof(float)
-  ));
-  float *output_weight;
-  float *output_bias;
-  output_weight = new float[num_hidden_neurons * num_classes];
-  output_bias = new float[num_classes];
-  MyReadFile = std::ifstream(weight_path+"l"+std::to_string(num_layers+file_offset)+"-dense.tsv");
-  ptr = 0;
-  while(std::getline(MyReadFile, line)){
-    output_weight[ptr++] = std::stof(line);
-  }
-  MyReadFile.close();
-  MyReadFile = std::ifstream(bias_path+"l"+std::to_string(num_layers+file_offset)+"-dense.tsv");
-  ptr = 0;
-  while(std::getline(MyReadFile, line)){
-    output_bias[ptr++] = std::stof(line);
-  }
-  MyReadFile.close();
-
-  checkCuda(cudaMemcpy(_dev_output_weight, output_weight, 
-    num_hidden_neurons * num_classes * sizeof(float), cudaMemcpyHostToDevice));
-  checkCuda(cudaMemcpy(_dev_output_bias, output_bias, 
-    num_classes * sizeof(float), cudaMemcpyHostToDevice));
-
-  delete [] output_weight;
-  delete [] output_bias;
+    delete[] output_weight;
+    delete[] output_bias;
 }
 
 void SNICIT::_input_alloc_read(const std::string& input_path) {
@@ -517,12 +570,21 @@ void SNICIT::_infer() {
     auto sparse_tic = std::chrono::steady_clock::now();
     // pre-convergence
     auto pre_tic = std::chrono::steady_clock::now();
-    for(int cur_layer = 0; cur_layer < threshold; cur_layer++) { // num_layers-2
-      sparse_hidden<<<batch_size, dim3((int)(1024/num_hidden_neurons), num_hidden_neurons, 1), 
-        sizeof(float)*num_hidden_neurons, dev_stream>>>(_dev_Y_hidden[cur_layer%2], 
-        _dev_hidden_roffw[cur_layer], _dev_hidden_colsw[cur_layer], _dev_hidden_valsw[cur_layer], 
-        _dev_hidden_bias[cur_layer], batch_size, num_hidden_neurons, num_hidden_neurons, _dev_Y_hidden[(cur_layer+1)%2]);
-      checkCuda(cudaStreamSynchronize(dev_stream));
+    for (int cur_layer = 0; cur_layer < threshold; cur_layer++) {
+    sparse_hidden<<<batch_size, dim3((int)(1024/num_hidden_neurons), num_hidden_neurons, 1), sizeof(float)*num_hidden_neurons, dev_stream>>>(
+        _dev_Y_hidden[cur_layer%2],
+        _dev_hidden_row_offset[cur_layer],
+        _dev_hidden_delta_index[cur_layer],
+        _dev_hidden_nonzero_values[cur_layer],
+        _dev_hidden_bias[cur_layer],
+        batch_size,
+        _dev_hidden_slope[cur_layer],
+        num_hidden_neurons,
+        _dev_Y_hidden[(cur_layer+1)%2]
+    );
+
+    checkCuda(cudaStreamSynchronize(dev_stream));
+}
 
       checkCuda(cudaMemset(
         _dev_Y_hidden[cur_layer % 2],
@@ -570,13 +632,15 @@ void SNICIT::_infer() {
     std::cout<<"[**cluster-based conversion**] finished in "<< cluster_duration/1000.0<< "ms"<<std::endl;
     // post convergence
     auto post_tic = std::chrono::steady_clock::now();
-    for(int cur_layer = threshold; cur_layer < num_layers; cur_layer++) { // num_layers-2
-      auto post_p_tic = std::chrono::steady_clock::now();
-      sparse_hidden_post<<<ne_rows, dim3((int)(1024/num_hidden_neurons), num_hidden_neurons, 1), 
-        sizeof(float)*num_hidden_neurons, dev_stream>>>(rowsY, _dev_Y_hidden[threshold % 2], 
-        _dev_hidden_roffw[cur_layer], _dev_hidden_colsw[cur_layer], _dev_hidden_valsw[cur_layer], 
-        batch_size, num_hidden_neurons, num_hidden_neurons, _dev_Y_hidden[(1+threshold) % 2]);
-      checkCuda(cudaStreamSynchronize(dev_stream));
+    for (int cur_layer = threshold; cur_layer < num_layers; cur_layer++) {
+            auto post_p_tic = std::chrono::steady_clock::now();
+            sparse_hidden_post<<<ne_rows, dim3((int)(1024/num_hidden_neurons), num_hidden_neurons, 1),
+                sizeof(float)*num_hidden_neurons, dev_stream>>>(rowsY, _dev_Y_hidden[threshold % 2],
+                _dev_hidden_delta_index[cur_layer], _dev_hidden_nonzero_values[cur_layer],
+                _dev_hidden_minimum[cur_layer], _dev_hidden_row_offset[cur_layer],
+                _dev_hidden_avg_nnz[cur_layer], _dev_hidden_slope[cur_layer],
+                batch_size, num_hidden_neurons, num_hidden_neurons, _dev_Y_hidden[(1+threshold) % 2]);
+            checkCuda(cudaStreamSynchronize(dev_stream));
       update_post<<<ne_rows, num_hidden_neurons, 0,  dev_stream>>>(
         rowsY, centroid_LUT, _dev_Y_hidden[(1+threshold) % 2], _dev_hidden_bias[cur_layer], 
         num_hidden_neurons, ne_record, _dev_Y_hidden[threshold % 2]
