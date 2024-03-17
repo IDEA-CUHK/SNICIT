@@ -44,12 +44,14 @@ __global__ void sparse_hidden(
     float* Y1
 ) {
     extern __shared__ float shRow[];
+
     int shRowSize = K;
     int tid = threadIdx.x + threadIdx.y * blockDim.x;
 
     if (tid < K) {
         shRow[tid] = bias[tid];
     }
+
     __syncthreads();
 
     for (int i = threadIdx.y; i < N; i += blockDim.y) {
@@ -66,12 +68,14 @@ __global__ void sparse_hidden(
             atomicAdd(&shRow[colW], valY * valW);
         }
     }
+
     __syncthreads();
 
     if (tid < K) {
         Y1[blockIdx.x * K + tid] = min(float(1.0), max(float(0), shRow[tid]));
     }
 }
+
 
 __global__ void dense_output(
     const float* Y0,
